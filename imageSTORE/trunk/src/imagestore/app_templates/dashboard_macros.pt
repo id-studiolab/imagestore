@@ -1,0 +1,22 @@
+<metal:block define-macro="main">
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>imageSTORE Dashboard</title>
+<link tal:attributes="href static/style/base.css" rel="stylesheet" type="text/css" />
+</head>
+
+<body class="home">
+
+<div id="container">
+  <div id="mainContent">
+    <div tal:condition="view/error | nothing" class="error_msg" tal:content="view/error"></div>
+    <metal:block define-slot="content">
+    </metal:block>
+    <p class="small">imageSTORE version (unreleased). contact information </p>
+  </div>
+</div>
+</body>
+</html>
+</metal:block>
+

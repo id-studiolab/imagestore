@@ -1,0 +1,201 @@
+=======
+CHANGES
+=======
+
+0.10 (unreleased)
+=================
+
+* Verify that ++rest++flash URL also shows up in absolute URLs.
+
+* Added comprehensive tests for the HTTP methods (GET, POST, PUT,
+  DELETE) for all kinds of resources. Make sure that the resources
+  give back the right status codes.
+
+* Resources that cannot be deleted now return the proper 405 status
+  code and don't let themselves be deleted.
+
+* Add LGPL license.
+
+0.9.2 (2008-06-03)
+==================
+
+* ++rest++flash form-based update system wasn't working properly with
+  status messages. They weren't coerced to 200 always, and the real
+  status information wasn't embedded in the returned XML.
+
+0.9.1 (2008-06-02)
+==================
+
+* ++rest++flash URLs didn't work with the form upload functionality
+  for images. This has been fixed.
+
+0.9 (2008-05-22)
+================
+
+* Start maintaining this in (private) SVN instead of bzr.
+
+* ++rest++flash in URLs now triggers Flash behavior.
+
+* store image files as blobs. use ``z3c.blobfile`` as an backend,
+  instead of ``zope.app.file``.
+
+* add a special 'custom' metadata field wich can be used to store
+  arbitrary XML.
+
+* Upgrade to Grok 0.12
+
+08-01-02
+========
+
+* Accidentally left debugging code in the system. Removed it now.
+
+* The default behavior of the store now massively breaks the HTTP
+  standard: no matter what status code should be returned, 200 is
+  always returned. This is to please massively broken behavior of the
+  Flash client, which apparently is unable to read any response body
+  unless the status message is 200. To turn the behavior back to
+  normal either override IHTTPOnly200 or disable IHTTPEmbed.
+
+07-12-21
+========
+
+* Make sure content-type is correct for error responses.
+
+* Embed HTTP info in 404 error response.
+
+07-12-17
+========
+
+* XML responses for success and failure. Where previously a succesful
+  response result in an empty body, success now gets an explicit
+  ``<success />`` message. Errors previously just got a message as the
+  body. They now use XML as well:
+  ``<error><message>Reason</message></error>``
+
+* HTTP information is embedded within the XML response. All responses
+  (success or error) now have the HTTP response embedded in them. The
+  first element directly under the root element will be an ``http``
+  element. This element contains a ``status`` element containing HTTP
+  status information, and zero or more ``header`` elements containing
+  response headers.
+ 
+* More XML is now copy & pasteable (GET the XML from server and then
+  POST or PUT it back in works).
+
+* Fix some failing tests introduced by the new ``href`` attribute on
+  the ``source`` element.
+
+07-12-13
+========
+
+* Allow faking PUT and DELETE over POST using special ``_method=put``
+  and ``_method=delete`` URL parameters.
+
+* You can POST to ``../images/factory`` now with a form-style
+  (multipart/form-data) body, to create an image. This is not
+  the official REST way to create images (POST the data to images),
+  but systems like Flash cannot upload files any other way due to
+  security reasons. Assumed is that the upload will take place using
+  Flash's ``FileReference.upload()`` functionality, i.e. the form will
+  have an entry called ``Filedata``.
+
+* There is also a special URL ``../images/myimage/formdata`` that can
+  be POSTed to using a form-style body to replace the image
+  content. This is not the official REST way to replace images (PUT to
+  the data to the image URL), but systems like Flash will be helped by
+  this.
+
+* Better error message if Slug header happens to be missing from the request.
+
+* The 'source' element has its own href URL and can be modified using
+  PUT. (it could already be, but its URL was missing and it was untested)
+
+07-11-16
+========
+
+* rely on Grok 0.11 now, which has native REST support.
+
+* A lot of renaming and reshuffling: renamed "session-library" to
+  "sessions", renamed "image-library" to "images", renamed
+  "library-image" to "source-image". "collection" element went
+  away. Instead, the root group is called "collection". Make sure the
+  filler script and frontend work with these changes.
+
+* Sessions now have a new 'groups' sub-item that lists all the groups
+  in the session.
+
+* Added a test with non-ascii characters to verify whether XML coming
+  from REST (or going into) can be properly UTF-8 encoded.
+
+* No more i18n warning when starting up.
+
+* A dashboard UI. To get to the dashboard UI, type '/dashboard' after
+  the store root object.
+
+* Extended the rest.txt doctest with a lot of text to clarify the procedure.
+
+* Make sure that Location headers are set when necessary when doing a
+  POST.
+
+* Status strings are those as suggested by HTTP and more detailed
+  status messages in case of errors are now in the response body.
+
+* The Content-Type of the XML response is now ``application/xml``.
+
+* Do not allow POST of object if object with the same name already exists
+  in location: give 407 (Conflict) error instead.
+
+* Fixed a bug where invalid XML could still result in the creation of
+  an (invalid) object.
+
+* various cleanups.
+
+07-11-01
+========
+
+* Use Grok's REST infrastructure now. This cleans up things quite a
+  bit.
+
+* Allow GET and PUT on individual metadata fields.
+
+* Maintain created and modified datetimes.
+
+* Allow searching for created and modified datetimes. Besides 'tag'
+  you can now also add 'created_before', 'created_after',
+  'modified_before' and 'modified_after' to a search request.
+
+* Forbid the use of illegal names for resources. Only names with
+  alphanumeric characters, underscore, dash and period are allowed.
+
+* Better HTTP error handling for non-wellformedness and invalid XML.
+
+07-09-28
+========
+
+Features added
+--------------
+
+* RESTful search support for tags. In summary, searches can be made on
+  any '../objects' URL of a group, by appending "?tag=a&tag=b". search
+  will be local and nested by default. To do a non-nested search in
+  only the local group, you can also append "&deep=False" to the URL.
+
+  See backend/src/backend/search.txt for details.
+
+* Some more object types (such session-library, sessions and
+  collections) can now also be POSTed and PUTed to directly. (in the
+  previous version they could only be GET-ed).
+
+* The backend doesn't create thumbnails anymore. Instead, the pygame
+  frontend creates these thumbnails itself when needed, using pygame.
+
+Build changes
+-------------
+
+* required version numbers are hardcoded into the buildout now, so
+  prevent builds from failing when new dependencies get released.
+
+* PIL (Python imaging library is not a dependency anymore.
+
+* buildout doesn't try to build pygame. If you have pygame the
+  frontend will still work.

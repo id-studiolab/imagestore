@@ -1,0 +1,1486 @@
+.. -*- coding: utf-8 -*-
+
+imageSTORE REST protocol
+========================
+
+A frontend can interact with the store using a REST_ interface. The
+store is more like a web site than like a API. Instead of objects and
+methods what is exposed are resources and representations. A client
+can interact with the resources using HTTP GET, POST, PUT and DELETE
+requests.
+
+This document shows how you can interact with the store using the REST
+interface. We go into the details of various interactions. The nice
+thing about REST is that it is just HTTP, and most languages have
+support libraries to deal with the HTTP protocol.
+
+The REST protocol in this application uses XML. In this document, we
+will also show how you can use XML processing tools to make dealing
+with XML relatively convenient. Your own application may be written in
+a different language than Python, in which case you cannot use lxml,
+the XML processing library we use in this document. Since XML
+processing tools exist in most languages, it should be possible to
+find equivalents to what we do here.
+
+.. _REST: http://rest.blueoxen.net/cgi-bin/wiki.pl
+
+Accessing the application
+-------------------------
+
+The application is stored in an object database, the ZODB. In order to
+create the application we first need to create a new application
+object. Let's create it here::
+
+  >>> from imagestore.app import ImageStore
+  >>> store = ImageStore()
+
+We now need to store this object into the object database itself. The
+object database exposes a root container we can store things in::
+
+  >>> root_container = getRootFolder()
+
+It exposes its content using Python dictionary style access. We will store
+the store in the root container, naming it 'store'::
+
+  >>> root_container['store'] = store
+
+The URL of the application will be as follows::
+
+  >>> app_url = 'http://localhost/store'
+
+We can now access the application using HTTP GET on this URL::
+
+  >>> response = http_get(app_url)
+
+The GET request was a success, so we get the HTTP status of 200 (OK)
+from the server in the response::
+
+  >>> response.getStatusString()
+  '200 Ok'
+
+What is more interesting is what is in the body of the response. We
+will now go into some detail on how to handle this. What is in the
+body is an XML document::
+
+  >>> xml = response.getBody()
+
+The ``Content-Type`` of the response will be ``application/xml``. All
+XML content will be encoded using the UTF-8 encoding (the XML
+default)::
+
+  >>> response.getHeader('Content-Type')
+  'application/xml; charset=UTF-8'
+
+XML documents are essentially just plaintext documents. Let's take a
+look at the raw text of the document::
+
+  >>> xml
+  '<imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="store"><sessions href="sessions"/></imagestore>'
+
+We need to parse this document using an XML parser in order to do
+anything useful with it, so let's parse it::
+
+  >>> from lxml import etree
+  >>> el = etree.XML(xml)
+
+``el`` now refers to the top element of the document, allowing us to
+access the rest of the document (by navigating to its children and so
+on). The lxml libraries exposes a convenient way to access and
+manipulate XML structures.
+
+Raw XML documents as returned by the ImageStore are a bit hard to
+read, as they are all on one line. This is compact and more convenient
+to deal with programmatically, but not very readable. Using lxml's
+pretty-print facility, we can display the XML document in
+pretty-printed form::
+
+  >>> print etree.tostring(el, pretty_print=True)
+  <imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="store">
+    <sessions href="sessions"/>
+  </imagestore>
+
+We will be using this pretty-print facility a lot to display XML
+documents. Let's define a convenience function that will help us
+format the response (and return the parsed root element, which we 
+may need later)::
+
+  >>> def pretty(response):
+  ...     el = etree.XML(response.getBody())
+  ...     print etree.tostring(el, pretty_print=True)
+  ...     return el
+
+This function is a big ugly in the way that the *side effect* is
+printing something and it actually returns the element, but it does
+the job.
+
+Let's see whether it works::
+
+  >>> el = pretty(response)
+  <imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="store">
+    <sessions href="sessions"/>
+  </imagestore>
+
+Let's take a closer look at the document. The document contains a
+namespace declaration::
+
+  xmlns="http://studiolab.io.tudelft.nl/ns/imagestore"
+
+What this declares is that the whole document is in the following
+namespace::
+
+  http://studiolab.io.tudelft.nl/ns/imagestore
+
+Namespaces are used to make it possible to reuse short element names
+in different XML vocabularies without conflicts. They are URIs. In
+fact this one looks like a URL (a special kind of URI) and in fact it
+is, but doesn't function like a normal URL. Nothing has to happen when
+you point your browser to it. URLs are used for namespaces to to have
+a way to create a unique identifier. Since we will need this
+particular namespace URI programmatically later, let's store it::
+
+  >>> NS = 'http://studiolab.io.tudelft.nl/ns/imagestore'
+
+This namespace URI is one we created specifically for the image store
+protocol. It is also the only one we're ever going to need when
+handling the protocol of the image store.
+
+Let's take a look at the top XML element of the document::
+ 
+  >>> el.tag
+  '{http://studiolab.io.tudelft.nl/ns/imagestore}imagestore'
+
+What you see here is that the lxml library represents the
+``imagestore`` tag with an extra bit in front:
+``{http://studiolab.io.tudelft.nl/ns/imagestore}``. Because of the
+special ``xmlns=`` declaration in the XML document, all elements in
+this document will be in this namespace. Let's for example look at the
+``sessions`` element that is below the top element::
+
+  >>> el[0].tag
+  '{http://studiolab.io.tudelft.nl/ns/imagestore}sessions'
+
+In technical terms, this special way to represent the element name is
+called "Clarke notation". Clarke notation is verbose, but since the
+namespace URI is in there it is actually quite convenient to use
+programmatically, and always unique across all XML documents. This is
+why lxml uses it.
+
+Constructing URLs
+-----------------
+
+The store has a number of sessions in it, contained in the sessions
+container. There are no sessions yet, so the ``sessions`` element in
+the XML is empty::
+
+  >>> len(el[0])
+  0
+
+We want to create a new session now. To do this, we need to have the
+URL of the sessions container. How do we get to it?
+
+One idea behind REST is that the client application should never make
+any assumptions about URLs itself and only use those provided by the
+server. In effect it is just like a human user typically uses a web
+site or web application: the user usually clicks links, and doesn't
+construct them manually in the location bar. The site provides a
+navigation structure so that the user can get to where they are.
+
+In this RESTful application, the server provides a relative path to
+the sessions container in the ``href`` attribute of the ``sessions``
+element. We want to access the sessions container directly, so we need
+this information.
+
+XPath is a way to easily retrieve bits of information from an XML
+document. We will use this to to retrieve the ``href`` attribute from
+the document. Another way to retrieve information from the document
+would be to look at a its tree structure and navigate to the right
+attribute. In fact, we saw some of this navigation above, using the
+``[0]`` construction to get to the ``sessions`` element. Yet another
+way would be to parse it with a streaming parser like SAX and watch
+for the information we need. The advantage of using XPath is that it
+is both succint and convenient, so in this document we will typically
+use XPath.
+
+We know that all our elements are in a special namespace. We use a
+default namespace declaration to indicate this. XPath 1.0, which is
+what we're using, unfortunately does not support default
+namespaces. Instead, namespaces need to be indicated specifically with
+a so called *namespace prefix*. Such namespace prefixes can in fact
+also be used in XML documents themselves, but since we don't use that
+facility here we won't show it.
+
+A prefix is just a shorthand for a namespace URI. It is there for
+convenience only (it's less long than a URI) and does not have a
+meaning by itself. We can define what prefix belongs to which namepace
+URI using a mapping like the following::
+
+  >>> NS_MAP = {'ids': NS}
+
+Here we say that the prefix ``ids`` (we just made that shorthand up)
+is mapped to the namespace URI in ``NS`` (which we defined earlier
+on).
+
+When we want to address elements that are in a namespace, which as
+we've seen before, all the elements in the idstore XML are, we will
+need to use prefixes in the XPath expression. 
+
+Inside an XPath expression you can now identify an element in a
+certain namespace by using the prefix, the colon (``:``) and the
+element itself, like this::
+
+  ids:sessions
+
+With lxml, we can use the ``xpath`` method to evaluate XPath
+expressions on element objects. One element we already have is ``el``:
+the ``imagestore`` element. Let's now access the ``sessions`` element
+using XPath. We know this is directly under the ``imagestore``
+element. In XPath you can get to an element directly under another one
+like this::
+
+  ids:sessions
+
+A very simple XPath expression indeed: we just say: give us all elements below
+the current one (``el`` in our case) that have that name. In Clarke notation
+that would read like this::
+
+  '{http://studiolab.io.tudelft.nl/ns/imagestore}sessions'
+
+Now let's take a look. Note that we have to pass ``NS_MAP`` along,
+otherwise XPath will have no idea what the prefix ``ids`` really
+stands for::
+
+  >>> l = el.xpath('ids:sessions', namespaces=NS_MAP)
+  
+XPath typically returns a list instead of a single element, even if
+there is only a single sub-element available. Our list will just have
+a single element::
+
+  >>> len(l)
+  1
+
+Let's get it::
+
+  >>> sessions_el = l[0]
+ 
+In fact it's one we've already seen before (``el[0]``)::
+
+  >>> sessions_el is el[0]
+  True
+  >>> sessions_el.tag
+  '{http://studiolab.io.tudelft.nl/ns/imagestore}sessions'
+
+We are going to use a more complicated XPath expression now to
+retrieve the contents of the ``href`` attribute that is on the
+``sessions`` element. We will not go into further details on how this
+works - you can look up the rest in an XPath tutorial::
+
+  >>> el.xpath('ids:sessions/@href', namespaces=NS_MAP)
+  ['sessions']
+
+That's correct: the ``href`` attribute of the ``sessions`` element has
+indeed the value ``sessions`` too::
+
+  <sessions href="sessions"/>
+
+As we said previously, XPath usually returns a list of matching
+elements or strings. When we look for a single ``href`` this is
+somewhat inconvenient. Let's define a convenience function which will
+take some work out of our hands (including passing in ``NS_MAP``):
+
+  >>> def xpath(el, path):
+  ...    return el.xpath(path, namespaces=NS_MAP)[0]
+
+Let's get the relative path again using this convenience function::
+
+  >>> rel_path = xpath(el, 'ids:sessions/@href')
+  >>> rel_path
+  'sessions'
+
+That's better.
+
+We cannot use relative URLs directly to access the application. We
+have to turn them into absolute URLs first. Using the relative URL we
+retrieved with XPath, we can now construct the absolute URL to the
+sessions container, by just adding the relative URL to the URL we are
+currently accessing.
+
+  >>> app_url + '/' + rel_path
+  'http://localhost/store/sessions'
+
+Let's define another convenience function to construct an absolute URL
+from another one and a relative one::
+
+  >>> def rel(path, rel_path):
+  ...   return path + '/' + rel_path
+
+We can now use this function to construct the absolute URL to the
+sessions container::
+
+  >>> sessions_url = rel(app_url, rel_path)
+  >>> sessions_url
+  'http://localhost/store/sessions'
+
+We can make things even more convenient by combining these two
+functions::
+  
+  >>> def url_to(url, element, path):
+  ...     return rel(url, xpath(element, path))
+
+Using this we can construct the absolute URL indicated by some ``href`` in the
+document in one step::
+
+  >>> sessions_url = url_to(app_url, el, 'ids:sessions/@href')
+  >>> sessions_url
+  'http://localhost/store/sessions'
+
+Let's take a look at what is behind that URL by issuing a HTTP GET
+request to it::
+
+  >>> response = http_get(sessions_url)
+
+Let's take a look at the response using our ``pretty`` convenience function::
+
+  >>> el = pretty(response)
+  <sessions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="."/>
+
+Creating a session
+------------------
+
+Now that we have constructed a URL directly to the ``sessions``
+container, how do we actually create a new session?
+
+We can do this by issuing a POST request to the sessions container
+URL. The POST request is supplied with XML which defines the new
+session. That XML looks like this::
+
+  >>> session_xml = '''
+  ... <session xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="one" />
+  ... '''
+
+We want to create a new session with the name ``one``. Please also
+note that we need to declare all elements to be contained in our
+special namespace using ```xmlns`` again; if we won't do that, things
+won't work.
+
+Let's now issue the HTTP POST request to the ``sessions`` container::
+
+  >>> response = http_post(sessions_url, session_xml)
+
+When we have successfully created a new object using a POST, we expect
+a status of 201 (Created)::
+
+  >>> response.getStatusString()
+  '201 Created'
+
+Since our POST to create a new session was indeed successful, we
+expect the URL of the newly created object to be the ``Location``
+header of the response::
+
+  >>> response.getHeader('Location')
+  'http://localhost/store/sessions/one'
+
+The body of the POST response contains a simple statement of success::
+
+  >>> success_el = pretty(response)
+  <success xmlns="..."/>
+
+The new session should now be visible in the sessions container::
+
+  >>> response = http_get(sessions_url)
+  >>> el = pretty(response)
+  <sessions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <session href="one" name="one">
+      <group href="one/collection" name="collection">
+        ...
+      </group>
+      <groups href="one/groups">
+        ...
+      </groups>
+      <images href="one/images"/>
+    </session>
+  </sessions>
+
+We cannot POST a session with the same name twice::
+
+  >>> response = http_post(sessions_url, session_xml)
+
+The status code of the response will be 409 (Conflict)::
+
+  >>> response.getStatusString()
+  '409 Conflict'
+
+The Location header will have the URL to the resource that this request
+is conflicting with (the existing session called 'One')::
+
+  >>> response.getHeader('Location')
+  'http://localhost/store/sessions/one'
+
+The body contains more information about what is wrong::
+
+  >>> error_el = pretty(response)
+  <error xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">
+    <message>There is already a resource with this name in this location.</message>
+  </error>
+
+Each session is automatically supplied with an ``images`` container,
+containing the images in use for that session, as well as a
+``collection``, which is the root group of a group hierarchy for that
+session.
+
+Let's construct a link to the individual session we just created::
+
+  >>> session_url = url_to(sessions_url, el, 'ids:session[@name="one"]/@href')
+  >>> session_url
+  'http://localhost/store/sessions/one'
+
+We can examine this session::
+
+  >>> response = http_get(session_url)
+  >>> response.getStatusString()
+  '200 Ok'
+  >>> el = pretty(response)
+  <session xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="one">
+    <group href="collection" name="collection">
+      ...
+    </group>
+    <groups href="groups">
+      ...
+    </groups>
+    <images href="images"/>
+  </session>
+
+Images in the images container
+------------------------------
+
+The session has an images container. This container contains the binary
+images: JPGs and so on. Let's examine its XML representation::
+
+  >>> images_url = url_to(session_url, el, 'ids:images/@href')
+  >>> images_url
+  'http://localhost/store/sessions/one/images'
+  >>> response = http_get(images_url)
+  >>> response.getStatusString()
+  '200 Ok'
+  >>> el = pretty(response)
+  <images xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="."/>
+ 
+It doesn't contain any images yet. Let's POST an image to the
+``images`` container to create a new image. We need to have some way
+to set the name of the new image, and unlike in the session, we don't
+have the XML body to set it. Instead, we supply the name of image
+using the special ``Slug`` header::
+
+  >>> data = image_data('test1.jpg')
+  >>> response = http_post(images_url, data, 
+  ...                      Slug='alpha.jpg')
+
+We should get the 201 (Created) response status again::
+
+  >>> response.getStatusString()
+  '201 Created'
+
+The location of the new image object is in the Location header::
+
+  >>> response.getHeader('Location')
+  'http://localhost/store/sessions/one/images/alpha.jpg'
+
+The body contains a simple success message::
+
+  >>> success_el = pretty(response)
+  <success xmlns="..."/>
+ 
+The image should now be there::
+
+  >>> response = http_get(images_url)
+  >>> el = pretty(response)
+  <images xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <source-image href="alpha.jpg" name="alpha.jpg"/>
+  </images>
+
+It should contain the uploaded data::
+
+  >>> alpha_url = url_to(images_url, el, 'ids:source-image/@href')
+  >>> alpha_url
+  'http://localhost/store/sessions/one/images/alpha.jpg'
+  >>> response = http_get(alpha_url)
+  >>> response.getStatusString()
+  '200 Ok'
+  >>> response.getBody() == data
+  True
+
+We cannot upload an image without the Slug header::
+
+  >>> response = http_post(images_url, data) 
+  >>> response.getStatusString()
+  '400 Bad Request'
+  >>> error_el = pretty(response)
+  <error xmlns="...">
+    <message>Slug header is missing from request.</message>
+  </error>
+
+Using HTTP PUT we can also replace an existing image::
+
+  >>> data2 = image_data('test2.jpg')
+  >>> response = http_put(alpha_url, data2)
+  >>> response.getStatusString()
+  '200 Ok'
+  >>> response = http_get(alpha_url)
+  >>> retrieved_data = response.getBody()
+  >>> retrieved_data == data
+  False
+  >>> retrieved_data == data2
+  True
+
+Let's put back the original image, and add a second image::
+
+  >>> response = http_put(alpha_url, data)
+  >>> response = http_post(images_url, data2,
+  ...                      Slug='beta.jpg')
+
+We should now see two images::
+
+  >>> response = http_get(images_url)
+  >>> el = pretty(response)
+  <images xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <source-image href="alpha.jpg" name="alpha.jpg"/>
+    <source-image href="beta.jpg" name="beta.jpg"/>
+  </images>
+
+Let's add a third image::
+
+  >>> response = http_post(images_url, data,
+  ...                      Slug='gamma.jpg')
+
+And a fourth image::
+
+  >>> response = http_post(images_url, data,
+  ...                      Slug='delta.jpg')
+  >>> response = http_get(images_url)
+  >>> el = pretty(response)
+  <images xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <source-image href="alpha.jpg" name="alpha.jpg"/>
+    <source-image href="beta.jpg" name="beta.jpg"/>
+    <source-image href="delta.jpg" name="delta.jpg"/>
+    <source-image href="gamma.jpg" name="gamma.jpg"/>
+  </images>
+
+We cannot add an image with the same name twice::
+
+  >>> response = http_post(images_url, data,
+  ...                      Slug='delta.jpg')
+  >>> response.getStatusString()
+  '409 Conflict'
+
+There is a conflict with an already existing resource. The resource's
+URL is in the Location header::
+
+  >>> response.getHeader('Location')
+  'http://localhost/store/sessions/one/images/delta.jpg'
+
+The body of the response contains a bit more information about what
+went wrong, in plain-text form::
+
+  >>> error_el = pretty(response)
+  <error xmlns="...">
+    <message>There is already a resource with this name in this location.</message>
+  </error>
+
+Now let's look into deleting images. First, we construct a URL to the
+delta image::
+
+  >>> delta_url = url_to(images_url, el, 'ids:source-image[@name="delta.jpg"]/@href')
+  >>> delta_url
+  'http://localhost/store/sessions/one/images/delta.jpg'
+
+Using HTTP DELETE we delete the ``delta`` image::
+
+  >>> response = http_delete(delta_url)
+
+We expect a 200 OK response code if everything went okay::
+
+  >>> response.getStatusString()
+  '200 Ok'
+
+The response body contains a success message::
+
+  >>> success_el = pretty(response)
+  <success xmlns="..."/>
+
+The ``delta`` image should now be gone from the overview::
+  >>> response = http_get(images_url)
+  >>> el = pretty(response)
+  <images xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <source-image href="alpha.jpg" name="alpha.jpg"/>
+    <source-image href="beta.jpg" name="beta.jpg"/>
+    <source-image href="gamma.jpg" name="gamma.jpg"/>
+  </images>
+
+Note that Slugs have restrictions on naming. We cannot add images with
+(Slug) names that contain illegal characters, such as space
+characters::
+
+  >>> response = http_post(images_url, data,
+  ...                      Slug='delta .jpg')
+  >>> response.getStatusString()
+  '400 Bad Request'
+  >>> error_el = pretty(response)
+  <error xmlns="...">
+    <message>Slug name 'delta .jpg' contains illegal characters.</message>
+  </error>
+
+Groups
+------
+
+Groups are contained in other groups. The root group of a session is
+the ``collection`` group, which is directly contained by the session.
+
+Let's examine the ``collection`` group of the session now::
+
+  >>> response = http_get(session_url)
+  >>> el = etree.XML(response.getBody())
+  >>> collection_url = url_to(session_url, el, 'ids:group[@name="collection"]/@href')
+  >>> collection_url
+  'http://localhost/store/sessions/one/collection'
+
+Each session also contains a special ``groups`` section. This shows a
+list of all groups in that session (flattened from their nested
+structure)::
+
+  >>> groups_url = url_to(session_url, el, 'ids:groups/@href')
+  >>> groups_url
+  'http://localhost/store/sessions/one/groups'
+
+The only group in the session at this point in time is the collection
+(root) group::
+
+  >>> response = http_get(groups_url)
+  >>> el = pretty(response)
+  <groups xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <group href="http://localhost/store/sessions/one/collection" name="collection">
+      ...
+    </group>
+  </groups>
+
+Let's go to the collection group directly::
+
+  >>> response = http_get(collection_url)
+  >>> el = pretty(response)
+  <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="collection">
+    ...
+  </group>
+
+We can examine it in more detail::
+
+  >>> print etree.tostring(el, pretty_print=True)
+  <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="collection">
+    ...
+    <objects href="objects"/>
+  </group>
+
+As we can see, no groups are contained by the collection group
+yet. The ``objects`` listing is empty. 
+
+We will now add a new group by issuing a POST to the collection
+group's objects URL. As the request body we will supply the XML 
+describing the group::
+
+  >>> collection_objects_url = url_to(collection_url, el, 'ids:objects/@href')
+  >>> xml = '''
+  ... <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="test">
+  ...   <source name="alpha.jpg"/>
+  ...   <metadata>
+  ...     <depth>1.0</depth>
+  ...     <rotation>2.0</rotation>
+  ...     <tags/>
+  ...     <x>3.0</x>
+  ...     <y>4.0</y>
+  ...   </metadata>
+  ...   <objects />
+  ... </group>
+  ... '''
+
+We create a group with a particular image as its source, a set of
+metadata and no sub-objects::
+
+  >>> response = http_post(collection_objects_url, xml)
+  >>> response.getStatusString()
+  '201 Created'
+  >>> response.getHeader('Location')
+  'http://localhost/store/sessions/one/collection/objects/test'
+  >>> success_el = pretty(response)
+  <success xmlns="..."/>  
+
+The new group should be visible in the collection group::
+
+  >>> response = http_get(collection_url)
+  >>> el = pretty(response)
+  <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="collection">
+    ...
+    <objects href="objects">
+      <group href="objects/test" name="test">
+        <source src="http://localhost/store/sessions/one/images/alpha.jpg" href="objects/test/source" name="alpha.jpg"/>
+        <metadata href="objects/test/metadata">
+          <created href="objects/test/metadata/created">...</created>
+          <custom href="objects/test/metadata/custom"/>
+          <depth href="objects/test/metadata/depth">1.0</depth>
+          <modified href="objects/test/metadata/modified">...</modified>
+          <rotation href="objects/test/metadata/rotation">2.0</rotation>
+          <tags href="objects/test/metadata/tags"/>
+          <x href="objects/test/metadata/x">3.0</x>
+          <y href="objects/test/metadata/y">4.0</y>
+        </metadata>
+        <objects href="objects/test/objects"/>
+      </group>
+    </objects>
+  </group>
+
+We will add another group called ``test2``::
+
+  >>> xml = '''
+  ... <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="test2">
+  ...   <source name="beta.jpg"/>
+  ...   <metadata>
+  ...     <depth>1.0</depth>
+  ...     <rotation>2.0</rotation>
+  ...     <tags/>
+  ...     <x>3.0</x>
+  ...     <y>4.0</y>
+  ...   </metadata>
+  ...   <objects />
+  ... </group>
+  ... '''
+  >>> response = http_post(collection_objects_url, xml)
+  >>> response.getStatusString()
+  '201 Created'
+  >>> response.getHeader('Location')
+  'http://localhost/store/sessions/one/collection/objects/test2'
+  >>> success_el = pretty(response)
+  <success xmlns="..."/>
+
+We should see this new group in the ``objects`` listing now::
+
+  >>> response = http_get(collection_url)
+  >>> el = pretty(response)
+  <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="collection">
+    ...
+    <objects href="objects">
+      <group href="objects/test" name="test">
+        <source src="http://localhost/store/sessions/one/images/alpha.jpg" href="objects/test/source" name="alpha.jpg"/>
+        ...
+      </group>
+      <group href="objects/test2" name="test2">
+        <source src="http://localhost/store/sessions/one/images/beta.jpg" href="objects/test2/source" name="beta.jpg"/>
+        ...
+      </group>
+    </objects>
+  </group>
+
+Let's go back for a bit to the flat groups listing on the session. The
+new groups should be there too::
+
+  >>> response = http_get(groups_url)
+  >>> el2 = pretty(response)
+  <groups xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <group href="http://localhost/store/sessions/one/collection" name="collection">
+      ...
+    </group>
+    <group href="http://localhost/store/sessions/one/collection/objects/test" name="test">
+      ...
+    </group>
+    <group href="http://localhost/store/sessions/one/collection/objects/test2" name="test2">
+      ...
+    </group>
+  </groups>
+
+We will remove the ``test2`` group again:, using a HTTP DELETE::
+
+  >>> test2_url = url_to(collection_url, el, 'ids:objects/ids:group[@name="test2"]/@href')
+  >>> test2_url
+  'http://localhost/store/sessions/one/collection/objects/test2'
+  >>> response = http_delete(test2_url)
+  >>> response.getStatusString()
+  '200 Ok'
+  >>> success_el = pretty(response)  
+  <success xmlns="..."/>
+
+The deleted group should now be gone::
+
+  >>> response = http_get(collection_url)
+  >>> el = pretty(response)
+  <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="collection">
+    ...
+    <objects href="objects">
+      <group href="objects/test" name="test">
+        <source src="http://localhost/store/sessions/one/images/alpha.jpg" href="objects/test/source" name="alpha.jpg"/>
+        ...
+      </group>
+    </objects>
+  </group>
+
+XML validation
+--------------
+
+When we submit data with POST or PUT, we should submit XML text. When
+we submit something that is not XML at all, we expect an error::
+
+  >>> non_xml = "This isn't valid XML at all"
+  >>> response = http_post(collection_objects_url, non_xml)
+  >>> response.getStatusString()
+  '400 Bad Request'
+  >>> error_el = pretty(response)
+  <error xmlns="...">
+    <message>The submitted data was not well-formed XML.</message>
+  </error>
+
+Even if the data looks like XML it can be malformed. Let's try again::
+
+  >>> non_xml = '''
+  ... <foo>
+  ... <this><is></not><even>
+  ... </wellformed>
+  ... '''
+  >>> response = http_post(collection_objects_url, non_xml)
+  >>> response.getStatusString()
+  '400 Bad Request'
+  >>> error_el = pretty(response)
+  <error xmlns="...">
+    <message>The submitted data was not well-formed XML.</message>
+  </error>
+
+This isn't allowed with a PUT either::
+
+  >>> response = http_put(collection_objects_url, non_xml)
+  >>> response.getStatusString()
+  '400 Bad Request'
+  >>> error_el = pretty(response)
+  <error xmlns="...">
+    <message>The submitted data was not well-formed XML.</message>
+  </error>
+
+Even if we do add well-formed XML, we can add invalid XML: XML that
+contains illegal elements or XML that isn't allowed in this location.
+Let's try adding a group with invalid XML (the ``flub`` element)::
+
+  >>> xml = '''
+  ... <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="test3">
+  ...   <source name="beta.jpg"/>
+  ...   <flub />
+  ...   <metadata>
+  ...     <depth>1.0</depth>
+  ...     <rotation>2.0</rotation>
+  ...     <tags/>
+  ...     <x>3.0</x>
+  ...     <y>4.0</y>
+  ...   </metadata>
+  ...   <objects />
+  ... </group>
+  ... '''
+  >>> response = http_post(collection_objects_url, xml)
+  >>> response.getStatusString()
+  '400 Bad Request'
+  >>> error_el = pretty(response)
+  <error xmlns="...">
+    <message>The submitted XML was invalid.</message>
+  </error>
+
+There should of course be no new ``test3`` resource available now::
+
+  >>> response = http_get(collection_objects_url)
+  >>> el2 = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <group href="test" name="test">
+      ...
+    </group>
+  </objects>
+
+We aren't allowed to PUT invalid XML either::
+
+  >>> response = http_put(collection_objects_url, xml)
+  >>> response.getStatusString()
+  '400 Bad Request'
+  >>> error_el = pretty(response)
+  <error xmlns="...">
+    <message>The submitted XML was invalid.</message>
+  </error>
+
+Let's for a change inspect the raw HTTP result to see whether the response
+structure is what we expect::
+
+  >>> print http('POST /store/sessions/one/collection/objects HTTP/1.1\r\n%s' % xml)
+  HTTP/1.1 400 Bad Request
+  Content-Length: 117
+  Content-Type: application/xml; charset=UTF-8
+  <error xmlns="..."><message>The submitted XML was invalid.</message></error>
+
+We cannot POST or PUT something which has a ``name`` attribute in it
+that contains illegal characters. The name is restricted to avoid the
+creation of URLs with hard to read characters in them. Let's try
+POSTing a document that has a name with an illegal character (a
+question mark)::
+
+  >>> xml = '''
+  ... <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="aha?ah">
+  ...   <source name="beta.jpg"/>
+  ...   <metadata>
+  ...     <depth>1.0</depth>
+  ...     <rotation>2.0</rotation>
+  ...     <tags/>
+  ...     <x>3.0</x>
+  ...     <y>4.0</y>
+  ...   </metadata>
+  ...   <objects />
+  ... </group>
+  ... '''
+  >>> response = http_post(collection_objects_url, xml)
+  >>> response.getStatusString()
+  '400 Bad Request'
+  >>> error_el = pretty(response)
+  <error xmlns="...">
+    <message>The submitted XML was invalid.</message>
+  </error>
+
+Spaces in names aren't allowed either::
+
+  >>> xml = '''
+  ... <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="foo bar">
+  ...   <source name="beta.jpg"/>
+  ...   <metadata>
+  ...     <depth>1.0</depth>
+  ...     <rotation>2.0</rotation>
+  ...     <tags/>
+  ...     <x>3.0</x>
+  ...     <y>4.0</y>
+  ...   </metadata>
+  ...   <objects />
+  ... </group>
+  ... '''
+  >>> response = http_post(collection_objects_url, xml)
+  >>> response.getStatusString()
+  '400 Bad Request'
+
+It is legal to include periods, underscores and hash signs::
+
+  >>> xml = '''
+  ... <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="foo_bar-baz.foo">
+  ...   <source name="beta.jpg"/>
+  ...   <metadata>
+  ...     <depth>1.0</depth>
+  ...     <rotation>2.0</rotation>
+  ...     <tags/>
+  ...     <x>3.0</x>
+  ...     <y>4.0</y>
+  ...   </metadata>
+  ...   <objects />
+  ... </group>
+  ... '''
+  >>> response = http_post(collection_objects_url, xml)
+  >>> response.getStatusString()
+  '201 Created'
+  >>> response.getHeader('Location')
+  'http://localhost/store/sessions/one/collection/objects/foo_bar-baz.foo'
+
+Let's clean up again::
+
+  >>> response = http_delete(response.getHeader('Location'))
+  >>> response.getStatusString()
+  '200 Ok'
+
+It is also not allowed to add content to a location where it is not
+allowed. Here we try to add a group directly to another group (NOT its
+objects sub-url)::
+
+  >>> xml = '''
+  ... <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="something">
+  ...   <source name="beta.jpg"/>
+  ...   <metadata>
+  ...     <depth>1.0</depth>
+  ...     <rotation>2.0</rotation>
+  ...     <tags/>
+  ...     <x>3.0</x>
+  ...     <y>4.0</y>
+  ...   </metadata>
+  ...   <objects />
+  ... </group>
+  ... '''
+  >>> response = http_post(collection_url, xml)
+  >>> response.getStatusString()
+  '400 Bad Request'
+  >>> error_el = pretty(response)
+  <error xmlns="...">
+    <message>The submitted content could not be added in this location.</message>
+  </error>
+
+Image objects
+-------------
+
+A group's ``objects`` container can, besides sub-groups, also contain
+``image`` objects.
+
+Let's examine the test group::
+
+  >>> test_url = url_to(collection_url, el, 'ids:objects/ids:group[@name="test"]/@href')
+  >>> response = http_get(test_url)
+  >>> el = pretty(response)
+  <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="test">
+    <source src="http://localhost/store/sessions/one/images/alpha.jpg" href="source" name="alpha.jpg"/>
+    <metadata href="metadata">
+      <created href="metadata/created">...</created>
+      <custom href="metadata/custom"/>
+      <depth href="metadata/depth">1.0</depth>
+      <modified href="metadata/modified">...</modified>
+      <rotation href="metadata/rotation">2.0</rotation>
+      <tags href="metadata/tags"/>
+      <x href="metadata/x">3.0</x>
+      <y href="metadata/y">4.0</y>
+    </metadata>
+    <objects href="objects"/>
+  </group>
+
+The group has metadata, and a number of sub-objects. In this case we
+have no sub-objects yet. Let's take a look at the sub-object listing
+by itself::
+
+  >>> test_objects_url = url_to(test_url, el, 'ids:objects/@href')
+  >>> response = http_get(test_objects_url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="."/>
+
+We can add an image object to a group using a POST to the group's
+objects container::
+
+  >>> xml = '''
+  ... <image xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="a">
+  ...   <source name="alpha.jpg"/>
+  ...   <metadata>
+  ...     <depth>1.0</depth>
+  ...     <rotation>2.0</rotation>
+  ...     <tags/>
+  ...     <x>3.0</x>
+  ...     <y>4.0</y>
+  ...   </metadata>
+  ... </image>
+  ... '''
+  >>> response = http_post(test_objects_url, xml)
+  >>> response.getStatusString()
+  '201 Created'
+  >>> response.getHeader('Location')
+  'http://localhost/store/sessions/one/collection/objects/test/objects/a'
+  >>> success_el = pretty(response)
+  <success xmlns="..."/>
+
+The image can now be found in the objects container::
+
+  >>> response = http_get(test_objects_url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <image href="a" name="a">
+      <source src="http://localhost/store/sessions/one/images/alpha.jpg" href="a/source" name="alpha.jpg"/>
+      <metadata href="a/metadata">
+        <created href="a/metadata/created">...</created>
+        <custom href="a/metadata/custom"/>
+        <depth href="a/metadata/depth">1.0</depth>
+        <modified href="a/metadata/modified">...</modified>
+        <rotation href="a/metadata/rotation">2.0</rotation>
+        <tags href="a/metadata/tags"/>
+        <x href="a/metadata/x">3.0</x>
+        <y href="a/metadata/y">4.0</y>
+      </metadata>
+    </image>
+  </objects>
+
+Let's add a second object::
+
+  >>> xml = '''
+  ... <image xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="b">
+  ...   <source name="beta.jpg"/>
+  ...   <metadata>
+  ...     <depth>1.0</depth>
+  ...     <rotation>2.0</rotation>
+  ...     <tags/>
+  ...     <x>3.0</x>
+  ...     <y>4.0</y>
+  ...   </metadata>
+  ... </image>
+  ... '''
+  >>> response = http_post(test_objects_url, xml)
+
+The object is now there::
+
+  >>> response = http_get(test_objects_url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <image href="a" name="a">
+      ...
+    </image>
+    <image href="b" name="b">
+      ...
+    </image>
+  </objects>
+
+Let's remove it again::
+
+  >>> b_url = url_to(test_objects_url, el, 'ids:image[@name="b"]/@href')
+  >>> response = http_delete(b_url)
+
+It should be gone from the overview again::
+
+  >>> response = http_get(test_objects_url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <image href="a" name="a">
+      ...
+    </image>
+  </objects>
+
+Let's examine the ``a`` object. It has a link to the actual image used
+(that we supplied) and links to the x and y coordinates of that
+image::
+
+  >>> a_url = url_to(test_objects_url, el, 'ids:image[@name="a"]/@href')
+  >>> response = http_get(a_url)
+  >>> el = pretty(response)
+  <image xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="a">
+    <source src="http://localhost/store/sessions/one/images/alpha.jpg" href="source" name="alpha.jpg"/>
+    <metadata href="metadata">
+      <created href="metadata/created">...</created>
+      <custom href="metadata/custom"/>
+      <depth href="metadata/depth">1.0</depth>
+      <modified href="metadata/modified">...</modified>
+      <rotation href="metadata/rotation">2.0</rotation>
+      <tags href="metadata/tags"/>
+      <x href="metadata/x">3.0</x>
+      <y href="metadata/y">4.0</y>
+    </metadata>
+  </image>
+
+We can also look at the source individually::
+
+  >>> source_url = url_to(a_url, el, 'ids:source/@href')
+  >>> response = http_get(source_url)
+  >>> source_el = pretty(response)
+  <source xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" src="http://localhost/store/sessions/one/images/alpha.jpg" href="." name="alpha.jpg"/>
+
+We can modify the source using PUT. Note that we should modify the
+name, as the ``src`` URL is autogenerated::
+
+  >>> xml = '''
+  ... <source xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="beta.jpg" />
+  ... '''
+  >>> response = http_put(source_url, xml)
+  >>> response.getStatusString()
+  '200 Ok'
+
+It will have changed now::
+
+  >>> response = http_get(source_url)
+  >>> source_el = pretty(response)
+  <source xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" src="http://localhost/store/sessions/one/images/beta.jpg" href="." name="beta.jpg"/>
+
+We now look at the metadata by itself::
+
+  >>> a_metadata_url = url_to(a_url, el, 'ids:metadata/@href')
+  >>> response = http_get(a_metadata_url)
+  >>> el = pretty(response)
+  <metadata xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <created href="created">...</created>
+    <custom href="custom"/>
+    <depth href="depth">1.0</depth>
+    <modified href="modified">...</modified>
+    <rotation href="rotation">2.0</rotation>
+    <tags href="tags"/>
+    <x href="x">3.0</x>
+    <y href="y">4.0</y>
+  </metadata>
+
+We can modify the metadata using PUT::
+
+  >>> xml = '''
+  ... <metadata xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">
+  ...   <depth>0.0</depth>
+  ...   <rotation>0.0</rotation>
+  ...   <tags/>
+  ...   <x>170.0</x>
+  ...   <y>65.0</y>
+  ... </metadata>
+  ... '''
+  >>> response = http_put(a_metadata_url, xml)
+  >>> response.getStatusString()
+  '200 Ok'
+  
+When we retrieve the metadata, it will have changed::
+
+  >>> response = http_get(a_metadata_url)
+  >>> el = pretty(response)
+  <metadata xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <created href="created">...</created>
+    <custom href="custom"/>
+    <depth href="depth">0.0</depth>
+    <modified href="modified">...</modified>
+    <rotation href="rotation">0.0</rotation>
+    <tags href="tags"/>
+    <x href="x">170.0</x>
+    <y href="y">65.0</y>
+  </metadata>
+
+Accessing individual metadata fields
+------------------------------------
+
+We can access individual metadata fields::
+
+  >>> response = http_get(a_metadata_url)
+  >>> el = etree.XML(response.getBody())
+  >>> x_field_url = url_to(a_metadata_url, el, 'ids:x/@href')
+  >>> x_field_url
+  'http://localhost/store/sessions/one/collection/objects/test/objects/a/metadata/x'
+  >>> response = http_get(x_field_url)
+  >>> el = pretty(response)
+  <x xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">170.0</x>
+
+We can also alter individual metadata fields using PUT::
+
+  >>> xml = etree.tostring(el, pretty_print=True)
+  >>> xml = xml.replace('170.0', '181.0') 
+  >>> response = http_put(x_field_url, xml)
+  >>> response.getStatusString()
+  '200 Ok'
+  >>> response = http_get(x_field_url)
+  >>> el = pretty(response)
+  <x xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">181.0</x>
+
+This also works for set fields::
+
+  >>> response = http_get(a_metadata_url)
+  >>> el = etree.XML(response.getBody())
+  >>> tags_field_url = url_to(a_metadata_url, el, 'ids:tags/@href')
+  >>> response = http_get(tags_field_url)
+  >>> el = pretty(response)
+  <tags xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="."/>
+ 
+Let's change the list of tags with a PUT::
+
+  >>> sub = etree.SubElement(el, '{%s}tag' % NS)
+  >>> sub.text = 'a'
+  >>> sub = etree.SubElement(el, '{%s}tag' % NS)
+  >>> sub.text = 'b'
+  >>> xml = etree.tostring(el, pretty_print=True)
+  >>> response = http_put(tags_field_url, xml)
+  >>> response = http_get(tags_field_url)
+  >>> el = pretty(response)
+  <tags xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <tag>a</tag>
+    <tag>b</tag>
+  </tags>
+
+Let's look at an overview of all the metadata after our changes::
+
+  >>> response = http_get(a_metadata_url)
+  >>> el = pretty(response)
+  <metadata xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <created href="created">...</created>
+    <custom href="custom"/>
+    <depth href="depth">0.0</depth>
+    <modified href="modified">...</modified>
+    <rotation href="rotation">0.0</rotation>
+    <tags href="tags">
+      <tag>a</tag>
+      <tag>b</tag>
+    </tags>
+    <x href="x">181.0</x>
+    <y href="y">65.0</y>
+  </metadata>
+
+We can use non-ascii characters in tags::
+
+  >>> xml = u'<tags xmlns="http://studiolab.io.tudelft.nl/ns/imagestore"><tag>Hé</tag></tags>'.encode('UTF-8')
+  >>> response = http_put(tags_field_url, xml)
+  >>> response = http_get(tags_field_url)
+
+We'll look at the raw response body to see whether the character is
+encoded correctly. Because doctests do not support printing unicode
+characters, we'll look at the raw string output instead. We expect the
+character 'é' to be encoded in UTF-8 as \xc3\xa9::
+
+  >>> response.getBody()
+  '<tags xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="."><tag>H\xc3\xa9</tag></tags>'
+
+Creation and modification datetime
+----------------------------------
+
+Objects track the time they were created and when they were modified.
+
+To demonstrate this, we first need to record the current datetime::
+
+  >>> from datetime import datetime
+  >>> start = datetime.now()
+
+When we create a new object, it will have its creation datetime set::
+
+  >>> xml = '''
+  ... <image xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="c">
+  ...   <source name="beta.jpg"/>
+  ...   <metadata>
+  ...     <depth>1.0</depth>
+  ...     <rotation>2.0</rotation>
+  ...     <tags/>
+  ...     <x>3.0</x>
+  ...     <y>4.0</y>
+  ...   </metadata>
+  ... </image>
+  ... '''
+  >>> response = http_post(test_objects_url, xml)
+
+When we examine the newly created object it will contain a created and
+modified field in its metadata::
+
+  >>> response = http_get(test_objects_url)
+  >>> el = etree.XML(response.getBody())
+  >>> c_object_url = url_to(test_objects_url, el, 'ids:image[@name="c"]/@href')
+  >>> response = http_get(c_object_url)
+  >>> el = pretty(response)
+  <image xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="c">
+    ...
+    <metadata href="metadata">
+      <created href="metadata/created">...</created>
+      ...
+      <modified href="metadata/modified">.../modified>
+      ... 
+    </metadata>
+  </image>
+
+We will now record the end datetime::
+
+  >>> end = datetime.now()
+
+We know that the newly created object will have a created and modified
+datetime between ``start`` and ``end``::
+
+  >>> created_datestamp = xpath(el, 'ids:metadata/ids:created/text()')
+  >>> from imagestore.metadata import parse_iso_to_datetime
+  >>> created_datetime = parse_iso_to_datetime(created_datestamp)
+  >>> start <= created_datetime <= end
+  True
+  >>> modified_datestamp = xpath(el, 'ids:metadata/ids:modified/text()')
+  >>> modified_datetime = parse_iso_to_datetime(modified_datestamp)
+  >>> start <= modified_datetime <= end
+  True
+
+Setting the created or modified fields explicitly using PUT will have no effect
+as these are managed by the system::
+
+  >>> created_url = url_to(c_object_url, el, 'ids:metadata/ids:created/@href')
+  >>> xml = '''
+  ... <created xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">2007-01-01T17:00:00</created>
+  ... '''
+  >>> response = http_put(created_url, xml)
+
+We get the original created datetime again::
+
+  >>> response = http_get(c_object_url)
+  >>> el = etree.XML(response.getBody())
+  >>> new_created_datestamp = xpath(el, 'ids:metadata/ids:created/text()')
+  >>> new_created_datestamp == created_datestamp
+  True
+
+We also cannot set these by PUTing all the metadata at once; these
+values will be ignored by the system as well::
+
+  >>> xml = '''
+  ... <metadata xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">
+  ...   <created>2007-01-01T17:00:00</created>
+  ...   <depth>0.0</depth>
+  ...   <modified>2007-01-02T18:00:00</modified>
+  ...   <rotation>0.0</rotation>
+  ...   <tags/>
+  ...   <x>170.0</x>
+  ...   <y>66.0</y>
+  ... </metadata>
+  ... '''
+  >>> c_metadata_url = url_to(c_object_url, el, 'ids:metadata/@href')
+  >>> start = datetime.now()
+  >>> response = http_put(c_metadata_url, xml)
+  >>> end = datetime.now()
+  
+We expect the created field to be the same as before::
+
+  >>> response = http_get(c_object_url)
+  >>> el = etree.XML(response.getBody())
+  >>> new_created_datestamp = xpath(el, 'ids:metadata/ids:created/text()')
+  >>> new_created_datestamp == created_datestamp
+  True
+
+The modified field should be set to the datetime one of last
+modification::
+
+  >>> modified_datestamp = xpath(el, 'ids:metadata/ids:modified/text()')
+  >>> modified_datetime = parse_iso_to_datetime(modified_datestamp)
+  >>> start <= modified_datetime <= end
+  True
+
+We make another modification, this time through a field directly::
+
+  >>> x_url = url_to(c_object_url, el, 'ids:metadata/ids:x/@href')
+  >>> xml = '''
+  ... <x xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">777.0</x>
+  ... '''
+  >>> start = datetime.now()
+  >>> response = http_put(x_url, xml)
+  >>> end = datetime.now()
+
+When we retrieve the metadata again, the x value is indeed modified::
+
+  >>> response = http_get(c_object_url)
+  >>> el = etree.XML(response.getBody())
+  >>> print xpath(el, 'ids:metadata/ids:x/text()')
+  777.0
+
+Moreover, the modified datestamp is now again listing the time of
+modification::
+
+  >>> modified_datestamp = xpath(el, 'ids:metadata/ids:modified/text()')
+  >>> modified_datetime = parse_iso_to_datetime(modified_datestamp)
+  >>> start <= modified_datetime <= end
+  True
+
+Custom XML metadata
+-------------------
+
+The special ``custom`` metadata field can be used to maintain arbitary
+XML with client-specific information.
+
+Let's first access an empty ``custom`` field::
+
+  >>> response = http_get(a_metadata_url)
+  >>> el = etree.XML(response.getBody())
+  >>> custom_field_url = url_to(a_metadata_url, el, 'ids:custom/@href')
+  >>> custom_field_url
+  'http://localhost/store/sessions/one/collection/objects/test/objects/a/metadata/custom'
+  >>> response = http_get(custom_field_url)
+  >>> el = pretty(response)
+  <custom xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="."/>
+
+As you can see, this field is very empty. Let's now put some arbitrary
+XML in there using PUT::
+
+  >>> xml = '<custom xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">'
+  >>> xml += '<a xmlns="http://studiolab.io.tudelft.nl/ns/arbitrary"><b><c/></b></a>'
+  >>> xml += '</custom>'
+  >>> response = http_put(custom_field_url, xml)
+  >>> response.getStatusString()
+  '200 Ok'
+  >>> response = http_get(custom_field_url)
+  >>> el = pretty(response)
+  <custom xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <a xmlns="http://studiolab.io.tudelft.nl/ns/arbitrary">
+      <b>
+        <c/>
+      </b>
+    </a>
+  </custom>
+
+The custom XML field can also be set to be empty again::
+
+  >>> xml = '<custom xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" />'
+  >>> response = http_put(custom_field_url, xml)
+  >>> response = http_get(custom_field_url)
+  >>> el = pretty(response)
+  <custom xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="."/>
