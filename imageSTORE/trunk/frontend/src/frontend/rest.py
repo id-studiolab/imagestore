@@ -45,7 +45,7 @@ class Rest(object):
         return self.url + '/' + rel_url
 
     def xpath(self, path):
-        return self.element().xpath(path, NS_MAP)
+        return self.element().xpath(path, namespaces=NS_MAP)
 
     def element(self):
         response = self.get()
