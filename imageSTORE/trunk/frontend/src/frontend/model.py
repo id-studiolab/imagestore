@@ -166,13 +166,13 @@ def load_group(name, group_rest):
     
     xml = group_rest.get().read()
     el = etree.XML(xml)
-    object_elements = el.xpath('ids:objects/*', NS_MAP)
+    object_elements = el.xpath('ids:objects/*', namespaces=NS_MAP)
     for object_el in object_elements:
         name = object_el.xpath('./@name')[0]
-        image_url = object_el.xpath('ids:source/@src', NS_MAP)[0]
-        image_name = object_el.xpath('ids:source/@name', NS_MAP)[0]
-        x = int(float(object_el.xpath('ids:metadata/ids:x/text()', NS_MAP)[0]))
-        y = int(float(object_el.xpath('ids:metadata/ids:y/text()', NS_MAP)[0]))
+        image_url = object_el.xpath('ids:source/@src', namespaces=NS_MAP)[0]
+        image_name = object_el.xpath('ids:source/@name', namespaces=NS_MAP)[0]
+        x = int(float(object_el.xpath('ids:metadata/ids:x/text()', namespaces=NS_MAP)[0]))
+        y = int(float(object_el.xpath('ids:metadata/ids:y/text()', namespaces=NS_MAP)[0]))
         
         dummy, namehint = os.path.split(image_url)
 
@@ -194,7 +194,7 @@ def load_group(name, group_rest):
             (int(w * scaling_factor), int(h * scaling_factor)))
 
         metadata_rest = Rest(group_rest.url + '/' +
-                             object_el.xpath('ids:metadata/@href', NS_MAP)[0])
+                             object_el.xpath('ids:metadata/@href', namespaces=NS_MAP)[0])
         group.add_object(Object(name, image_name, metadata_rest, image, thumb, x, y))
     return group
 
@@ -208,12 +208,12 @@ def load_collection_helper(collection_rest, collection):
     xml = root_rest.get().read()
     el = etree.XML(xml)
 
-    object_els = el.xpath('ids:objects/ids:group', NS_MAP)
+    object_els = el.xpath('ids:objects/ids:group', namespaces=NS_MAP)
 
     for object_el in object_els:
-        name = object_el.xpath('./@name', NS_MAP)[0]
+        name = object_el.xpath('./@name', namespaces=NS_MAP)[0]
         group_rest = Rest(
             root_rest.url + '/' +
-            object_el.xpath('./@href', NS_MAP)[0])
+            object_el.xpath('./@href', namespaces=NS_MAP)[0])
         group = load_group(name, group_rest)
         collection.add_group(name, group)
