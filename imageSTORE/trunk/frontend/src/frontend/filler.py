@@ -68,7 +68,6 @@ def main():
             images_rest.post(data, Slug=image_name)
             # XXX should get this from Location header in post somehow?
             added_images.append(image_name)
-        time.sleep(0.1)
 
     root_objects_rest = session_rest.click_to('ids:group/ids:objects/@href')
 
@@ -111,7 +110,6 @@ def main():
         ''' % (str(i), image_name)
         objects_rest.post(xml)
         i += 1
-        time.sleep(0.1)
 
 def find_images(image_path):
     # a single image
