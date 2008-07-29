@@ -5,7 +5,7 @@ CHANGES
 0.10 (unreleased)
 =================
 
-* Verify that ++rest++flash URL also shows up in absolute URLs.
+* Verified that ``++rest++flash`` URL also shows up in absolute URLs.
 
 * Added comprehensive tests for the HTTP methods (GET, POST, PUT,
   DELETE) for all kinds of resources. Make sure that the resources
@@ -19,6 +19,8 @@ CHANGES
 * Update to use Grok 0.13
 
 * Update to use lxml 2.0.x
+
+* remove ``time.sleep`` delay from 'filler' script.
 
 0.9.2 (2008-06-03)
 ==================
