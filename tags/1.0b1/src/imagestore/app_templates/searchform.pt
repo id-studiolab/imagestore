@@ -1,0 +1,13 @@
+<html>
+<body>
+<form tal:attributes="action python:view.url()" method="GET">
+  Tags: <input type="text" name="tags" value="" /><br />
+  <input type="submit" value="Search" />
+</form>
+<ul>
+<li tal:repeat="obj python:view.search_result">
+<a tal:attributes="href python:view.url(obj)" tal:content="python:view.url(obj)"></a>
+</li>
+</ul>
+</body>
+</html>
