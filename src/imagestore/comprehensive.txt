@@ -1,0 +1,482 @@
+Comprehensive tests
+===================
+
+This document isn't very readable and is more test-oriented. It aims
+to check the following for all elements of the application:
+
+* whether allowed verbs at least work with a single example.
+
+* whether disallowed verbs are truly disallowed (no DELETE on things
+  that cannot be deleted)
+
+We do not actually test the content of the application, as this is
+already well-covered by the other tests, except in cases of doubt.
+
+Create the store::
+
+  >>> from imagestore.app import ImageStore
+  >>> store = ImageStore()
+  >>> root_container = getRootFolder()
+  >>> root_container['store'] = store
+
+imagestore
+----------
+
+  >>> store_url = 'http://localhost/store'
+
+GET::
+
+  >>> response = http_get(store_url)
+  >>> response.getStatusString()
+  '200 Ok'
+
+POST (disallowed)::
+
+  >>> xml = '<foo/>'
+  >>> response = http_post(store_url, xml)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+PUT::
+
+  >>> xml = '''\
+  ... <imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">
+  ...   <sessions> 
+  ...     <session name="foo"/>
+  ...   </sessions>
+  ... </imagestore>
+  ... '''
+  >>> response = http_put(store_url, xml)
+  >>> response.getStatusString()
+  '200 Ok'
+
+The ``foo`` session should be there::
+
+  >>> response = http_get('http://localhost/store/sessions/foo')
+  >>> response.getStatusString()
+  '200 Ok'
+
+DELETE (disallowed)::
+
+  >>> response = http_delete(store_url)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+sessions
+--------
+
+  >>> sessions_url = 'http://localhost/store/sessions'
+
+GET::
+
+  >>> response = http_get(sessions_url)
+  >>> response.getStatusString()
+  '200 Ok'
+
+POST::
+
+  >>> xml = '''\
+  ... <session xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="bar">
+  ... </session>
+  ... '''
+  >>> response = http_post(sessions_url, xml)
+  >>> response.getStatusString()
+  '201 Created'
+
+PUT::
+
+  >>> xml = '''
+  ... <sessions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore"> 
+  ...   <session name="foo"/>
+  ... </sessions>
+  ... '''
+  >>> response = http_put(sessions_url, xml)
+  >>> response.getStatusString()
+  '200 Ok'
+
+DELETE (disallowed)::
+
+  >>> response = http_delete(sessions_url)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+session
+-------
+
+  >>> session_url = 'http://localhost/store/sessions/foo'
+
+GET::
+
+  >>> response = http_get(session_url)
+  >>> response.getStatusString()
+  '200 Ok'
+
+POST (disallowed)::
+
+  >>> xml = '<foo/>'
+  >>> response = http_post(session_url, xml)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+PUT::
+
+  >>> xml = '''\
+  ... <session xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="foo">
+  ... </session>
+  ... '''
+  >>> response = http_put(session_url, xml)
+  >>> response.getStatusString()
+  '200 Ok'
+
+DELETE::
+
+  >>> response = http_delete(session_url)
+  >>> response.getStatusString()
+  '200 Ok'
+
+images
+------
+
+Let's recreate the session::
+
+  >>> xml = '''\
+  ... <session xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="foo">
+  ... </session>
+  ... '''
+  >>> response = http_post(sessions_url, xml)
+
+  >>> images_url = 'http://localhost/store/sessions/foo/images'
+
+GET::
+
+  >>> response = http_get(images_url)
+  >>> response.getStatusString()
+  '200 Ok'
+
+POST::
+
+  >>> response = http_post(images_url, 'image data', Slug='alpha.png')
+  >>> response.getStatusString()
+  '201 Created'
+
+PUT::
+
+  >>> xml = '<foo/>'  
+  >>> response = http_put(images_url, xml)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+DELETE::
+
+  >>> response = http_delete(images_url)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+source image
+------------
+
+  >>> image_url = 'http://localhost/store/sessions/foo/images/alpha.png'
+
+GET::
+
+  >>> response = http_get(image_url)
+  >>> response.getStatusString()
+  '200 Ok'
+
+POST::
+
+  >>> response = http_post(image_url, 'foo')
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+PUT::
+
+  >>> response = http_put(image_url, 'different data')
+  >>> response.getStatusString()
+  '200 Ok'
+
+DELETE::
+
+  >>> response = http_delete(image_url)
+  >>> response.getStatusString()
+  '200 Ok'
+
+group
+-----
+
+  >>> group_url = 'http://localhost/store/sessions/foo/collection'
+
+GET::
+
+  >>> response = http_get(group_url)
+  >>> response.getStatusString()
+  '200 Ok'
+
+POST::
+
+  >>> xml = '<foo/>'
+  >>> response = http_post(group_url, xml)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+PUT::
+
+  >>> xml = '''\
+  ... <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="collection">
+  ...   <source name="alpha.png" />
+  ...   <metadata />
+  ...   <objects />
+  ... </group>
+  ... '''
+  >>> response = http_put(group_url, xml)
+  >>> response.getStatusString()
+  '200 Ok'
+
+Deleting groups is special. The special ``collection`` group cannot
+be deleted::
+
+  >>> response = http_delete(group_url)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+But other groups can be. Let's first create one::
+
+  >>> xml = '''\
+  ... <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="sub">
+  ...   <source name="alpha.png" />
+  ...   <metadata />
+  ...   <objects />
+  ... </group>
+  ... '''
+  >>> response = http_post(group_url + '/objects', xml)
+  >>> response.getStatusString()
+  '201 Created'
+
+Now we can delete it::
+
+  >>> response = http_delete(group_url + '/objects/sub')
+  >>> response.getStatusString()
+  '200 Ok'
+
+source
+------
+
+  >>> source_url = 'http://localhost/store/sessions/foo/collection/source'
+
+GET::
+
+  >>> response = http_get(source_url)
+  >>> response.getStatusString()
+  '200 Ok'
+
+POST::
+
+  >>> xml = '<foo/>'
+  >>> response = http_post(source_url, xml)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+PUT::
+
+  >>> xml = '''\
+  ... <source xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="alpha.png" />
+  ... '''
+  >>> response = http_put(source_url, xml)
+  >>> response.getStatusString()
+  '200 Ok'
+
+DELETE::
+
+  >>> response = http_delete(source_url)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+metadata
+--------
+
+  >>> metadata_url = 'http://localhost/store/sessions/foo/collection/metadata'
+
+GET::
+
+  >>> response = http_get(metadata_url)
+  >>> response.getStatusString()
+  '200 Ok'
+
+POST::
+
+  >>> xml = '<foo/>'
+  >>> response = http_post(metadata_url, xml)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+PUT::
+
+  >>> xml = '''\
+  ... <metadata xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">
+  ... </metadata>
+  ... '''
+  >>> response = http_put(metadata_url, xml)
+  >>> response.getStatusString()
+  '200 Ok'
+
+DELETE::
+
+  >>> response = http_delete(metadata_url)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+metadata field
+--------------
+
+  >>> metadata_field_url = 'http://localhost/store/sessions/foo/collection/metadata/x'
+ 
+GET::
+
+  >>> response = http_get(metadata_field_url)
+  >>> response.getStatusString()
+  '200 Ok'
+
+POST::
+
+  >>> xml = '<foo/>'
+  >>> response = http_post(metadata_field_url, xml)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+PUT::
+
+  >>> xml = '<x xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">10.0</x>'
+  >>> response = http_put(metadata_field_url, xml)
+  >>> response.getStatusString()
+  '200 Ok'
+
+DELETE::
+
+  >>> response = http_delete(metadata_field_url)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+objects
+-------
+
+  >>> objects_url = 'http://localhost/store/sessions/foo/collection/objects'
+
+GET::
+
+  >>> response = http_get(objects_url)
+  >>> response.getStatusString()
+  '200 Ok'
+
+POST::
+
+  >>> xml = '''\
+  ... <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="sub">
+  ...   <source name="alpha.png" />
+  ...   <metadata />
+  ...   <objects />
+  ... </group>
+  ... '''
+  >>> response = http_post(objects_url, xml)
+  >>> response.getStatusString()
+  '201 Created'
+
+PUT::
+
+  >>> xml = '''\
+  ... <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">
+  ...   <group name="sub">
+  ...     <source name="alpha.png" />
+  ...     <metadata />
+  ...     <objects />
+  ...   </group>
+  ... </objects>
+  ... '''
+  >>> response = http_put(objects_url, xml)
+  >>> response.getStatusString()
+  '200 Ok'
+
+DELETE::
+
+  >>> response = http_delete(objects_url)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+image
+-----
+
+Let's create a test image::
+
+  >>> xml = '''\
+  ... <image xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="test">
+  ...   <source name="alpha.png" />
+  ...   <metadata />
+  ... </image>
+  ... '''
+  >>> response = http_post(objects_url, xml)
+  >>> response.getStatusString()
+  '201 Created'
+
+  >>> image_url = 'http://localhost/store/sessions/foo/collection/objects/test'
+
+GET::
+
+  >>> response = http_get(image_url)
+  >>> response.getStatusString()
+  '200 Ok'
+
+POST::
+
+  >>> xml = '<foo/>'
+  >>> response = http_post(image_url, xml)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+PUT::
+
+  >>> xml = '''\
+  ... <image xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="test">
+  ...   <source name="alpha2.png" />
+  ...   <metadata />
+  ... </image>
+  ... '''
+  >>> response = http_put(image_url, xml)
+  >>> response.getStatusString()
+  '200 Ok'
+
+DELETE::
+
+  >>> response = http_delete(image_url)
+  >>> response.getStatusString()
+  '200 Ok'
+
+groups
+------
+
+  >>> groups_url = 'http://localhost/store/sessions/foo/groups'
+  
+GET::
+
+  >>> response = http_get(groups_url)
+  >>> response.getStatusString()
+  '200 Ok'
+
+POST::
+
+  >>> xml = '<foo/>'
+  >>> response = http_post(groups_url, xml)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+PUT::
+
+  >>> xml = '<foo/>'
+  >>> response = http_put(groups_url, xml)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+
+DELETE::
+
+  >>> response = http_delete(groups_url)
+  >>> response.getStatusString()
+  '405 Method not allowed'
+

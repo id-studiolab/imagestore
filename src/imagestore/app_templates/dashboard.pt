@@ -1,0 +1,15 @@
+<metal:block use-macro="context/@@dashboard_macros/macros/main">
+<metal:block fill-slot="content">
+    <h1>Available sessions</h1>
+      <p class="small">add a <a href="dashboard_add">new session.</a></p>
+      <ul>
+        <li tal:repeat="session python:context['sessions'].values()">
+          <h3><a tal:attributes="href python:view.url(session)" tal:content="python:session.__name__"></a></h3>
+          <p class="small">Created: <span tal:replace="python:view.session_created_datetime(session)">datetime</span>. 
+          <a tal:attributes="href python:view.url(session, 'dashboard_edit')">Edit</a> I 
+          <a tal:attributes="href python:view.url(session, 'dashboard_delete')">Delete</a>
+          </p>
+        </li>
+      </ul>
+</metal:block>
+</metal:block>

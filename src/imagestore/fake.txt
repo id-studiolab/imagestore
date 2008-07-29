@@ -1,0 +1,559 @@
+Flash support
+=============
+
+Flash implements a very broken HTTP client. It doesn't support PUT or
+DELETE. It doesn't allow full access to the HTTP status. It only
+allows file uploads using a ``multipart/form`` HTTP POST. If the
+server returns anything but status ``200``, the return value cannot be
+accessed at all.
+
+Some of the "faking HTTP" support described in this document is
+probably also useful to support other broken HTTP clients.
+
+PUT and DELETE over POST
+------------------------
+
+Unfortunately, flash doesn't support PUT and DELETE. We need to work
+around it by faking this using POST.
+
+How is this done? We define a special URL parameter (or form field)
+named ``_method``. To fake a PUT, add ``_method=put`` to the URL and
+issue a POST to it. This will then be interpreted as a PUT request.
+
+To fake a DELETE, add ``_method=delete`` to the URL and issue a POST
+to it. This will then be interpreted as a DELETE request.
+
+Let's look at this in action. We need to set up an application with
+some content first::
+
+  >>> from imagestore.app import ImageStore
+  >>> getRootFolder()['store'] = store = ImageStore()
+
+We make sure the URL to our ``app`` object is using the flash
+protocol, by using ++rest++flash at the beginning of the URL::
+
+  >>> app_url = 'http://localhost/++rest++flash/store'
+
+Let's put in some test content::
+
+  >>> response = http_get(app_url)
+  >>> from lxml import etree
+  >>> el = etree.XML(response.getBody())
+  >>> sessions_url = url_to(app_url, el, 'ids:sessions/@href')
+  >>> session_xml = '''
+  ... <session xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="one">
+  ...   <group name="collection">
+  ...     <source name="root.jpg"/>
+  ...     <metadata>
+  ...       <depth>1.0</depth>
+  ...       <rotation>2.0</rotation>
+  ...       <tags/>
+  ...       <x>3.0</x>
+  ...       <y>4.0</y>
+  ...     </metadata>
+  ...     <objects>
+  ...       <group name="eta">
+  ...         <source name="eta.jpg"/>
+  ...         <metadata>
+  ...           <depth>1.0</depth>
+  ...           <tags/>
+  ...         </metadata>
+  ...         <objects/>
+  ...       </group>
+  ...       <group name="theta">
+  ...         <source name="theta.jpg"/>
+  ...         <metadata>
+  ...           <depth>1.0</depth>
+  ...           <tags/>
+  ...         </metadata>
+  ...         <objects/>
+  ...       </group>
+  ...     </objects>
+  ...   </group>
+  ...   <images />
+  ... </session>
+  ... '''
+  >>> response = http_post(sessions_url, session_xml)
+  >>> response = http_get(sessions_url)
+  >>> el = etree.XML(response.getBody())
+  >>> sessions_el = el
+
+We now have a session named ``one`` which has a collection with two
+groups in it, ``eta`` and ``theta``. We now want to modify ``eta``
+over a fake PUT. Let's first get a link to the ``depth`` metadata
+field of ``eta``::
+
+  >>> depth_url = url_to(sessions_url, el, 
+  ... 'ids:session[@name="one"]/ids:group/ids:objects/ids:group[@name="eta"]/ids:metadata/ids:depth/@href')
+
+The ``depth_url`` is still in the right skin::
+
+  >>> depth_url
+  'http://localhost/++rest++flash/store/sessions/one/collection/objects/eta/metadata/depth'
+
+Let's get the depth::
+
+  >>> response = http_get(depth_url)
+  >>> el = pretty(response)
+  <depth xmlns="..." href="."><http>...</http>1.0</depth>
+
+We are going to fake-PUT (over POST) the following content to it
+(changing ``depth``)::
+ 
+  >>> xml = '<depth xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">2.0</depth>'
+  >>> response = http_post(depth_url + '?_method=put', xml)
+
+Since flash mode is enabled, all responses are 200, no matter what::
+
+  >>> response.getStatus()
+  200
+
+We should now see the new depth::
+
+  >>> response = http_get(depth_url)
+  >>> el = pretty(response)
+  <depth xmlns="..." href="."><http>...</http>2.0</depth>
+
+Let's try a fake-DELETE next. Let's try deleting ``theta`. First we need the
+URL to theta::
+
+  >>> theta_url = url_to(sessions_url, sessions_el, 
+  ... 'ids:session[@name="one"]/ids:group/ids:objects/ids:group[@name="theta"]/@href')
+  >>> theta_url
+  'http://localhost/++rest++flash/store/sessions/one/collection/objects/theta'
+
+We will now issue a fake-DELETE request to it (over POST)::
+
+  >>> response = http_post(theta_url + '?_method=delete', '')
+  >>> response.getStatus()
+  200
+
+The ``theta`` object is now gone::
+
+  >>> print http('GET %s HTTP/1.1\r\n' % theta_url)
+  HTTP/1.1 404 Not Found
+  ...
+ 
+We will also verify that this procedure works for images. First we will
+create an image by POSTing to the image URL::
+
+  >>> images_url = url_to(sessions_url, sessions_el, 
+  ... 'ids:session[@name="one"]/ids:images/@href')
+  >>> data = image_data('test1.jpg')
+  >>> response = http_post(images_url, data, 
+  ...                      Slug='alpha.jpg')
+
+We will now change the image by fake-PUT::
+
+  >>> response = http_get(images_url)
+  >>> el = pretty(response)
+  <images xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <http>...</http>
+    <source-image href="alpha.jpg" name="alpha.jpg"/>
+  </images>
+  >>> image_url = url_to(images_url, el, 'ids:source-image/@href')
+  >>> data2 = image_data('test2.jpg')
+  >>> response = http_post(image_url + '?_method=put', data2)
+  >>> response.getStatus()
+  200
+
+The fake-PUT should have worked, so the data should now be equivalent to
+data3::
+
+  >>> data3 = http_get(image_url).getBody()
+  >>> data3 == data2
+  True
+
+Alternate way to create images
+------------------------------
+
+A Flash client is only able to upload images from the filesystem using
+``FileReference.upload``. This is not able to create the expected POST
+request with the file as data directly. Instead, it does the
+equivalent of a HTML form submit and the payload is
+``multipart/form-data``. We have provided an extra URL that allows
+such uploads, ``images/factory``::
+
+Let's create an image using form-submit POST request::
+ 
+  >>> request_body = '''
+  ... POST /++rest++flash/store/sessions/one/images/factory HTTP/1.1
+  ... Content-Type: multipart/form-data; boundary=----------Ij5GI3GI3ei4GI3ei4KM7GI3KM7KM7
+  ...
+  ... ------------Ij5GI3GI3ei4GI3ei4KM7GI3KM7KM7
+  ... Content-Disposition: form-data; name="Filename"
+  ... 
+  ... MyFile.jpg
+  ... ------------Ij5GI3GI3ei4GI3ei4KM7GI3KM7KM7
+  ... Content-Disposition: form-data; name="Filedata"; filename="MyFile.jpg"
+  ... Content-Type: application/octet-stream
+  ... 
+  ... FileDataHere
+  ... ------------Ij5GI3GI3ei4GI3ei4KM7GI3KM7KM7
+  ... Content-Disposition: form-data; name="Upload"
+  ... 
+  ... Submit Query
+  ... ------------Ij5GI3GI3ei4GI3ei4KM7GI3KM7KM7-- 
+  ... '''
+  >>> print http(request_body)
+  HTTP/1.1 200 Ok
+  Content-Length: 220
+  Content-Type: text/plain
+  Location: http://localhost/++rest++flash/store/sessions/one/images/MyFile.jpg
+  <success xmlns="http://studiolab.io.tudelft.nl/ns/imagestore"><http><status code="201">Created</status><header name="Location">http://localhost/++rest++flash/store/sessions/one/images/MyFile.jpg</header></http></success>
+
+The file will exist now::
+
+  >>> response = http_get(images_url)
+  >>> el = pretty(response)
+  <images xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <http>...</http>
+    <source-image href="MyFile.jpg" name="MyFile.jpg"/>
+    <source-image href="alpha.jpg" name="alpha.jpg"/>
+  </images>
+
+And it will have the right content::
+
+  >>> response = http_get(images_url + '/MyFile.jpg')
+  >>> response.getBody()
+  'FileDataHere'
+
+It's also possible to POST to a special URL to replace an image using
+the same form upload system. Each image has a special ``formdata`` sub-URL
+that can be POSTed to, to replace the form content::
+
+  >>> request_body = '''
+  ... POST /++rest++flash/store/sessions/one/images/MyFile.jpg/formdata HTTP/1.1
+  ... Content-Type: multipart/form-data; boundary=----------Ij5GI3GI3ei4GI3ei4KM7GI3KM7KM7
+  ...
+  ... ------------Ij5GI3GI3ei4GI3ei4KM7GI3KM7KM7
+  ... Content-Disposition: form-data; name="Filename"
+  ... 
+  ... MyFile.jpg
+  ... ------------Ij5GI3GI3ei4GI3ei4KM7GI3KM7KM7
+  ... Content-Disposition: form-data; name="Filedata"; filename="MyFile.jpg"
+  ... Content-Type: application/octet-stream
+  ... 
+  ... FileDataHere2
+  ... ------------Ij5GI3GI3ei4GI3ei4KM7GI3KM7KM7
+  ... Content-Disposition: form-data; name="Upload"
+  ... 
+  ... Submit Query
+  ... ------------Ij5GI3GI3ei4GI3ei4KM7GI3KM7KM7-- 
+  ... '''
+  >>> print http(request_body)
+  HTTP/1.1 200 Ok
+  Content-Length: 115
+  Content-Type: text/plain
+  <success xmlns="http://studiolab.io.tudelft.nl/ns/imagestore"><http><status code="200">Ok</status></http></success>
+
+The file content should have changed again::
+
+  >>> response = http_get(images_url + '/MyFile.jpg')
+  >>> response.getBody()
+  'FileDataHere2'
+
+HTTP support
+------------
+
+Some HTTP clients (such the one in Flash, at least in some browsers)
+are not able to access the HTTP response status properly. To allow
+those HTTP clients to still access the response status and response
+headers, we are going to include them in the XML content.
+
+If the response is successful, the HTTP status is embedded in the
+response XML as follows::
+
+  >>> response = http_get(app_url)
+  >>> el = pretty(response)
+  <imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="store">
+    <http>
+      <status code="200">Ok</status>
+      <header name="Content-Type">application/xml; charset=UTF-8</header>
+    </http>
+    ...
+  </imagestore>
+
+Let's try a successful POST to create a new object::
+
+  >>> session_xml = session_xml.replace('name="one"', 'name="two"')
+  >>> response = http_post(sessions_url, session_xml)
+  >>> success_el = pretty(response)
+  <success xmlns="...">
+    <http>
+      <status code="201">Created</status>
+      <header name="Content-Type">application/xml; charset=UTF-8</header>
+      <header name="Location">http://localhost/++rest++flash/store/sessions/two</header>
+    </http>
+  </success>
+ 
+Let's try a successful PUT request::
+
+  >>> xml = '<depth xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">2.0</depth>'
+  >>> response = http_put(depth_url, xml)
+  >>> success_el = pretty(response)
+  <success xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">
+    <http>
+      <status code="200">Ok</status>
+      <header name="Content-Type">application/xml; charset=UTF-8</header>
+    </http>
+  </success>
+
+And a successful DELETE request::
+
+  >>> response = http_get(sessions_url)
+  >>> el = etree.XML(response.getBody())
+  >>> two_url = url_to(sessions_url, el, 'ids:session[@name="two"]/@href')
+  >>> response = http_delete(two_url)
+  >>> success_el = pretty(response)
+  <success xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">
+    <http>
+      <status code="200">Ok</status>
+      <header name="Content-Type">application/xml; charset=UTF-8</header>
+    </http>
+  </success>
+
+The deleted session is indeed gone::
+
+  >>> response = http_get(sessions_url)
+  >>> el = pretty(response)
+  <sessions xmlns="..." href=".">
+    <http>
+      ...
+    </http>
+    <session href="one" name="one">
+      ...
+    </session>
+  </sessions>
+
+Reusing existing XML with HTTP information embedded works - the ``http`` 
+tag doesn't confuse the server. Let's copy the ``one`` session to the ``two``
+session::
+
+  >>> one_url = url_to(sessions_url, el, 'ids:session[@name="one"]/@href')
+  >>> response = http_get(one_url)
+  >>> one_xml = response.getBody()
+  >>> two_xml = one_xml.replace('name="one"', 'name="two"')
+  >>> response = http_post(sessions_url, two_xml)
+  >>> response.getStatusString()
+  '200 Ok'
+
+The new session should be visible::
+
+  >>> response = http_get(sessions_url)
+  >>> el = pretty(response)
+  <sessions xmlns="..." href=".">
+    <http>
+      ...
+    </http>
+    <session href="one" name="one">
+      ...
+    </session>
+    <session href="two" name="two">
+      ...
+    </session>
+  </sessions>
+
+Let's create an image and see whether this gives the right output::
+
+  >>> response = http_get(one_url)
+  >>> el = etree.XML(response.getBody())
+  >>> images_url = url_to(one_url, el, 'ids:images/@href')
+  >>> response = http_post(images_url, data, 
+  ...                      Slug='new.jpg')
+  >>> success_el = pretty(response)
+  <success xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">
+    <http>
+      <status code="201">Created</status>
+      <header name="Content-Type">application/xml; charset=UTF-8</header>
+      <header name="Location">http://localhost/++rest++flash/store/sessions/one/images/new.jpg</header>
+    </http>
+  </success>
+
+Let's change an image using PUT::
+
+  >>> new_url = response.getHeader('Location')
+  >>> response = http_put(new_url, data)
+  >>> success_el = pretty(response)
+  <success xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">
+    <http>
+      <status code="200">Ok</status>
+      <header name="Content-Type">application/xml; charset=UTF-8</header>
+    </http>
+  </success>
+
+Or remove it using DELETE::
+
+  >>> response = http_delete(new_url)
+  >>> success_el = pretty(response)
+  <success xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">
+    <http>
+      <status code="200">Ok</status>
+      <header name="Content-Type">application/xml; charset=UTF-8</header>
+    </http>
+  </success>
+
+Now we're going to make some mistakes. Let's post some completely
+illegitimate stuff somewhere:
+
+  >>> response = http_post(sessions_url, '<foo><bar/>')
+  >>> error_el = pretty(response)
+  <error xmlns="...">
+    <http>
+      <status code="400">Bad Request</status>
+      <header name="Content-Type">application/xml; charset=UTF-8</header>
+    </http>
+    <message>The submitted data was not well-formed XML.</message>
+  </error>
+
+Let's try it when creating an image that already exists::
+
+  >>> response = http_post(images_url, data, Slug='alpha.jpg')
+  >>> error_el = pretty(response)
+  <error xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">
+    <http>
+      <status code="409">Conflict</status>
+      <header name="Content-Type">application/xml; charset=UTF-8</header>
+      <header name="Location">http://localhost/++rest++flash/store/sessions/one/images/alpha.jpg</header>
+    </http>
+    <message>There is already a resource with this name in this location.</message>
+  </error>
+
+Let's see the raw HTTP version of a failing PUT, to see whether the
+content-type is set correctly::
+
+  >>> response = http_put(images_url, data, Slug='alpha.jpg')
+  >>> print http('''\
+  ...   PUT ++rest++flash/store/sessions/one/images HTTP/1.1
+  ...   
+  ...   <foo/>
+  ...   ''')
+  HTTP/1.1 200 Ok
+  Content-Length: 275
+  Content-Type: application/xml; charset=UTF-8
+  <BLANKLINE>
+  <error xmlns="http://studiolab.io.tudelft.nl/ns/imagestore"><http><status code="405">Method not allowed</status><header name="Content-Type">application/xml; charset=UTF-8</header></http><message>Replacing of content with PUT is not allowed at this location.</message></error>
+
+Finally we'll try a 404 error::
+
+  >>> request_body = 'GET ++rest++flash/store/sessions/one/imageshuh HTTP/1.1'
+  >>> print http(request_body)
+  HTTP/1. 200 Ok
+  Content-Length: 274
+  Content-Type: application/xml; charset=UTF-8
+  <BLANKLINE>
+  <error xmlns="http://studiolab.io.tudelft.nl/ns/imagestore"><http><status code="404">Not Found</status><header name="Content-Type">application/xml; charset=UTF-8</header></http><message>Not found: http://localhost/++rest++flash/store/sessions/one/imageshuh</message></error>
+
+Force to status code 200
+------------------------
+
+Unfortunately the Flash HTTP library does not appear to be able to
+retrieve any response body content *unless* the status message is
+200. This means response bodies for 404 error messages, or even 201
+created messages, are not available as an error handler is always
+called.
+
+Even if the response message should be 201 (Created) now, it's
+actually still 200::
+
+  >>> session_xml = session_xml.replace('name="two"', 'name="three"')
+  >>> url = sessions_url.replace('http://localhost', '')
+  >>> print http('''\
+  ...   POST %s HTTP/1.1
+  ...   
+  ...   %s
+  ...   ''' % (url, session_xml))
+  HTTP/1.1 200 Ok
+  Content-Length: 271
+  Content-Type: application/xml; charset=UTF-8
+  Location: http://localhost/++rest++flash/store/sessions/three
+  <BLANKLINE>
+  <success xmlns="http://studiolab.io.tudelft.nl/ns/imagestore"><http><status code="201">Created</status><header name="Content-Type">application/xml; charset=UTF-8</header><header name="Location">http://localhost/++rest++flash/store/sessions/three</header></http></success>
+
+Similarly, a 400 (Bad Request) will return 200::
+
+  >>> response = http_put(images_url, data, Slug='alpha.jpg')
+  >>> print http('''\
+  ...   PUT ++rest++flash/store/sessions HTTP/1.1
+  ...   
+  ...   <foo/>
+  ...   ''')
+  HTTP/1.1 200 Ok
+  Content-Length: 248
+  Content-Type: application/xml; charset=UTF-8
+  <BLANKLINE>
+  <error xmlns="http://studiolab.io.tudelft.nl/ns/imagestore"><http><status code="400">Bad Request</status><header name="Content-Type">application/xml; charset=UTF-8</header></http><message>The submitted XML could not be recognized.</message></error>
+
+Even 404 errors now actually get the 200 Ok status::
+
+  >>> request_body = 'GET ++rest++flash/store/sessions/one/imageshuh HTTP/1.1'
+  >>> print http(request_body)
+  HTTP/1. 200 Ok
+  Content-Length: 274
+  Content-Type: application/xml; charset=UTF-8
+  <BLANKLINE>
+  <error xmlns="http://studiolab.io.tudelft.nl/ns/imagestore"><http><status code="404">Not Found</status><header name="Content-Type">application/xml; charset=UTF-8</header></http><message>Not found: http://localhost/++rest++flash/store/sessions/one/imageshuh</message></error>
+
+Search URLs
+-----------
+
+Doing a search produces absolute URLs in the result. If done in the
+++rest++flash namespace, these will also contain ++rest++flash in
+them.
+
+First we'll set up a session with some content to search::
+
+  >>> session_xml = '''
+  ... <session xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="searching">
+  ...   <group name="collection">
+  ...     <source name="root.jpg"/>
+  ...     <metadata>
+  ...       <depth>1.0</depth>
+  ...       <rotation>2.0</rotation>
+  ...       <tags/>
+  ...       <x>3.0</x>
+  ...       <y>4.0</y>
+  ...     </metadata>
+  ...     <objects>
+  ...       <group name="alpha">
+  ...         <source name="alpha.jpg"/>
+  ...         <metadata>
+  ...           <tags><tag>a</tag></tags>
+  ...         </metadata>
+  ...         <objects/>
+  ...       </group>
+  ...       <group name="beta">
+  ...         <source name="beta.jpg"/>
+  ...         <metadata>
+  ...           <tags><tag>b</tag></tags>
+  ...         </metadata>
+  ...         <objects/>
+  ...       </group>
+  ...     </objects>
+  ...   </group>
+  ...   <images />
+  ... </session>
+  ... '''
+  >>> response = http_post(sessions_url, session_xml)
+
+We now prepare a search link::
+
+  >>> response = http_get(sessions_url)
+  >>> el = etree.XML(response.getBody())
+  >>> collection_objects_url = url_to(sessions_url, el, 
+  ...   'ids:session[@name="searching"]/ids:group[@name="collection"]/ids:objects/@href')
+  >>> url = collection_objects_url + '?' + 'tag=a'
+
+Let's look at the response. It indeed contains the ++flash++ URLs::
+
+  >>> response = http_get(url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <group href="http://localhost/++rest++flash/store/sessions/searching/collection/objects/alpha" name="alpha">
+      <source src="http://localhost/++rest++flash/store/sessions/searching/images/alpha.jpg" href="http://localhost/++rest++flash/store/sessions/searching/collection/objects/alpha/source" name="alpha.jpg"/>
+      <metadata href="http://localhost/++rest++flash/store/sessions/searching/collection/objects/alpha/metadata">
+         ...
+      </metadata>
+      <objects href="http://localhost/++rest++flash/store/sessions/searching/collection/objects/alpha/objects"/>
+    </group>
+  </objects>

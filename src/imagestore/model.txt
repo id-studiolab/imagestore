@@ -1,0 +1,618 @@
+The storage model
+=================
+
+Basic object structure
+----------------------
+
+  >>> import imagestore
+
+Let's create an image store::
+
+  >>> from grok.testing import grok
+  >>> grok('imagestore')
+  >>> store = imagestore.ImageStore()
+
+We give the store a name::
+
+  >>> store.__name__ = 'example'
+
+An image store has a sessions container inside it::
+  >>> 'sessions' in store
+  True
+
+Let's add a session called ``foo``::
+
+  >>> store['sessions']['foo'] = imagestore.Session()
+
+We expect to see the ``foo`` session::
+
+  >>> 'foo' in store['sessions']
+  True
+  >>> session = store['sessions']['foo']
+
+Each session consists of an ``images`` container and a group called
+``collection``::
+
+  >>> 'images' in session
+  True
+  >>> 'collection' in session
+  True
+
+Before we can create images (even empty ones) that are used by
+``z3c.blobfile``, we have to register a utility::
+
+  >>> from zope import component
+  >>> from z3c.blobfile.storages import StringStorable
+  >>> from z3c.blobfile.interfaces import IStorage
+  >>> component.provideUtility(StringStorable(),
+  ...                          IStorage,
+  ...                          name="__builtin__.str")
+
+Let's place an image in the ``images`` container.
+
+  >>> images = session['images']
+  >>> images['a.png'] = imagestore.Image()
+ 
+The collection is the root of a group hierarchy::
+
+  >>> collection = session['collection']
+  >>> from imagestore import Group
+  >>> isinstance(collection, Group)
+  True
+
+The collection group has a metadata member::
+
+  >>> 'metadata' in collection
+  True
+
+Let's place an image object into the collection group. The image
+object must have a reference to an actual image::
+
+  >>> object = collection['objects']['alpha'] = imagestore.ImageObject('a.png')
+
+The object also has a metadata member::
+
+  >>> 'metadata' in object
+  True
+
+XML representation (GET)
+------------------------
+
+Images don't have an XML representation, as they are binary. The
+images container does have an XML representation.::
+
+  >>> from lxml import etree
+  >>> from imagestore.xml import export, Settings
+  >>> tree = export(images, Settings(expand='all'))
+  >>> print etree.tostring(tree, pretty_print=True)
+  <images xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <source-image href="a.png" name="a.png"/>
+  </images>
+
+Let's look at the XML representation of an actual image object::
+
+  >>> tree = export(object, Settings(expand='all'))
+  >>> print etree.tostring(tree, pretty_print=True)
+  <image xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="alpha">
+    <source src="APP/sessions/foo/images/a.png" href="source" name="a.png"/>
+    <metadata href="metadata">
+      <created href="metadata/created">...</created>
+      <custom href="metadata/custom"/>
+      <depth href="metadata/depth">0.0</depth>
+      <modified href="metadata/modified">...</modified>
+      <rotation href="metadata/rotation">0.0</rotation>
+      <tags href="metadata/tags"/>
+      <x href="metadata/x">0.0</x>
+      <y href="metadata/y">0.0</y>
+    </metadata>
+  </image>
+
+We can also look at the XML representation of the collection group::
+
+  >>> tree = export(collection, Settings(expand='all', app_url='APP'))
+  >>> print etree.tostring(tree, pretty_print=True)
+  <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="collection">
+    <source src="APP/sessions/foo/images/UNKNOWN" href="source" name="UNKNOWN"/>
+    <metadata href="metadata">
+      <created href="metadata/created">...</created>
+      <custom href="metadata/custom"/>
+      <depth href="metadata/depth">0.0</depth>
+      <modified href="metadata/modified">...</modified>
+      <rotation href="metadata/rotation">0.0</rotation>
+      <tags href="metadata/tags"/>
+      <x href="metadata/x">0.0</x>
+      <y href="metadata/y">0.0</y>
+    </metadata>
+    <objects href="objects">
+      <image href="objects/alpha" name="alpha">
+        <source src="APP/sessions/foo/images/a.png" href="objects/alpha/source" name="a.png"/>
+        <metadata href="objects/alpha/metadata">
+          <created href="objects/alpha/metadata/created">...</created>
+          <custom href="objects/alpha/metadata/custom"/>
+          <depth href="objects/alpha/metadata/depth">0.0</depth>
+          <modified href="objects/alpha/metadata/modified">...</modified>
+          <rotation href="objects/alpha/metadata/rotation">0.0</rotation>
+          <tags href="objects/alpha/metadata/tags"/>
+          <x href="objects/alpha/metadata/x">0.0</x>
+          <y href="objects/alpha/metadata/y">0.0</y>
+        </metadata>
+      </image>
+    </objects>
+  </group>
+
+Let's add a sub group to the collection group::
+
+  >>> sub_group = collection['objects']['beta'] = imagestore.Group('a.png')
+
+Let's add an image in the sub group::
+
+  >>> sub_group['objects']['gamma'] = imagestore.ImageObject('a.png')
+
+We should see this sub group as well now if we export the collection::
+
+  >>> tree = export(collection, Settings(expand='all', app_url='APP'))
+  >>> print etree.tostring(tree, pretty_print=True)
+  <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="collection">
+    <source src="APP/sessions/foo/images/UNKNOWN" href="source" name="UNKNOWN"/>
+    <metadata href="metadata">
+      <created href="metadata/created">...</created>
+      <custom href="metadata/custom"/>
+      <depth href="metadata/depth">0.0</depth>
+      <modified href="metadata/modified">...</modified>
+      <rotation href="metadata/rotation">0.0</rotation>
+      <tags href="metadata/tags"/>
+      <x href="metadata/x">0.0</x>
+      <y href="metadata/y">0.0</y>
+    </metadata>
+    <objects href="objects">
+      <image href="objects/alpha" name="alpha">
+        <source src="APP/sessions/foo/images/a.png" href="objects/alpha/source" name="a.png"/>
+        <metadata href="objects/alpha/metadata">
+          <created href="objects/alpha/metadata/created">...</created>
+          <custom href="objects/alpha/metadata/custom"/>
+          <depth href="objects/alpha/metadata/depth">0.0</depth>
+          <modified href="objects/alpha/metadata/modified">...</modified>
+          <rotation href="objects/alpha/metadata/rotation">0.0</rotation>
+          <tags href="objects/alpha/metadata/tags"/>
+          <x href="objects/alpha/metadata/x">0.0</x>
+          <y href="objects/alpha/metadata/y">0.0</y>
+        </metadata>
+      </image>
+      <group href="objects/beta" name="beta">
+        <source src="APP/sessions/foo/images/a.png" href="objects/beta/source" name="a.png"/>
+        <metadata href="objects/beta/metadata">
+          <created href="objects/beta/metadata/created">...</created>
+          <custom href="objects/beta/metadata/custom"/>
+          <depth href="objects/beta/metadata/depth">0.0</depth>
+          <modified href="objects/beta/metadata/modified">...</modified>
+          <rotation href="objects/beta/metadata/rotation">0.0</rotation>
+          <tags href="objects/beta/metadata/tags"/>
+          <x href="objects/beta/metadata/x">0.0</x>
+          <y href="objects/beta/metadata/y">0.0</y>
+        </metadata>
+        <objects href="objects/beta/objects">
+          <image href="objects/beta/objects/gamma" name="gamma">
+            <source src="APP/sessions/foo/images/a.png" href="objects/beta/objects/gamma/source" name="a.png"/>
+            <metadata href="objects/beta/objects/gamma/metadata">
+              <created href="objects/beta/objects/gamma/metadata/created">...</created>
+              <custom href="objects/beta/objects/gamma/metadata/custom"/>
+              <depth href="objects/beta/objects/gamma/metadata/depth">0.0</depth>
+              <modified href="objects/beta/objects/gamma/metadata/modified">...</modified>
+              <rotation href="objects/beta/objects/gamma/metadata/rotation">0.0</rotation>
+              <tags href="objects/beta/objects/gamma/metadata/tags"/>
+              <x href="objects/beta/objects/gamma/metadata/x">0.0</x>
+              <y href="objects/beta/objects/gamma/metadata/y">0.0</y>
+            </metadata>
+          </image>
+        </objects>
+      </group>
+    </objects>
+  </group>
+
+The hyperlinks help with navigation so that the client does not need
+to know about the URL structure in order to construct links to
+individual pages. It is entirely legal to POST or PUT a document
+without hyperlinks, as these are optional. So, in case these all too
+many hyperlinks altogether, we can also turn them off::
+
+  >>> tree = export(collection, Settings(expand='all', hyperlinks=False, app_url='APP'))
+  >>> print etree.tostring(tree, pretty_print=True)
+  <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="collection">
+    <source src="APP/sessions/foo/images/UNKNOWN" name="UNKNOWN"/>
+    <metadata>
+      <created>...</created>
+      <custom/>
+      <depth>0.0</depth>
+      <modified>...</modified>
+      <rotation>0.0</rotation>
+      <tags/>
+      <x>0.0</x>
+      <y>0.0</y>
+    </metadata>
+    <objects>
+      <image name="alpha">
+        <source src="APP/sessions/foo/images/a.png" name="a.png"/>
+        <metadata>
+          <created>...</created>
+          <custom/>
+          <depth>0.0</depth>
+          <modified>...</modified>
+          <rotation>0.0</rotation>
+          <tags/>
+          <x>0.0</x>
+          <y>0.0</y>
+        </metadata>
+      </image>
+      <group name="beta">
+        <source src="APP/sessions/foo/images/a.png" name="a.png"/>
+        <metadata>
+          <created>...</created>
+          <custom/>
+          <depth>0.0</depth>
+          <modified>...</modified>
+          <rotation>0.0</rotation>
+          <tags/>
+          <x>0.0</x>
+          <y>0.0</y>
+        </metadata>
+        <objects>
+          <image name="gamma">
+            <source src="APP/sessions/foo/images/a.png" name="a.png"/>
+            <metadata>
+              <created>...</created>
+              <custom/>
+              <depth>0.0</depth>
+              <modified>...</modified>
+              <rotation>0.0</rotation>
+              <tags/>
+              <x>0.0</x>
+              <y>0.0</y>
+            </metadata>
+          </image>
+        </objects>
+      </group>
+    </objects>
+  </group>
+
+Let's save this XML for later reconstruction in the creation tests::
+
+  >>> all_xml = etree.tostring(tree)
+
+Often is it useful to be able to look at only a single group at the
+time. We can display a more compact representation that only shows the
+metadata of the sub objects and groups but does not recurse downwards::
+
+  >>> tree = export(collection, Settings(expand='compact', app_url='APP'))
+  >>> print etree.tostring(tree, pretty_print=True)
+  <group xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="collection">
+    <source src="APP/sessions/foo/images/UNKNOWN" href="source" name="UNKNOWN"/>
+    <metadata href="metadata">
+      <created href="metadata/created">...</created>
+      <custom href="metadata/custom"/>
+      <depth href="metadata/depth">0.0</depth>
+      <modified href="metadata/modified">...</modified>
+      <rotation href="metadata/rotation">0.0</rotation>
+      <tags href="metadata/tags"/>
+      <x href="metadata/x">0.0</x>
+      <y href="metadata/y">0.0</y>
+    </metadata>
+    <objects href="objects">
+      <image href="objects/alpha" name="alpha">
+        <source src="APP/sessions/foo/images/a.png" href="objects/alpha/source" name="a.png"/>
+        <metadata href="objects/alpha/metadata">
+          <created href="objects/alpha/metadata/created">...</created>
+          <custom href="objects/alpha/metadata/custom"/>
+          <depth href="objects/alpha/metadata/depth">0.0</depth>
+          <modified href="objects/alpha/metadata/modified">...</modified>
+          <rotation href="objects/alpha/metadata/rotation">0.0</rotation>
+          <tags href="objects/alpha/metadata/tags"/>
+          <x href="objects/alpha/metadata/x">0.0</x>
+          <y href="objects/alpha/metadata/y">0.0</y>
+        </metadata>
+      </image>
+      <group href="objects/beta" name="beta">
+        <source src="APP/sessions/foo/images/a.png" href="objects/beta/source" name="a.png"/>
+        <metadata href="objects/beta/metadata">
+          <created href="objects/beta/metadata/created">...</created>
+          <custom href="objects/beta/metadata/custom"/>
+          <depth href="objects/beta/metadata/depth">0.0</depth>
+          <modified href="objects/beta/metadata/modified">...</modified>
+          <rotation href="objects/beta/metadata/rotation">0.0</rotation>
+          <tags href="objects/beta/metadata/tags"/>
+          <x href="objects/beta/metadata/x">0.0</x>
+          <y href="objects/beta/metadata/y">0.0</y>
+        </metadata>
+        <objects href="objects/beta/objects"/>
+      </group>
+    </objects>
+  </group>
+
+We look at a session as a whole::
+
+  >>> tree = export(session, Settings(app_url='APP', hyperlinks=False))
+  >>> print etree.tostring(tree, pretty_print=True)
+  <session xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="foo">
+    <group name="collection">
+        ...
+    </group>
+    <groups>
+      ...
+    </groups>
+    <images>
+      <source-image name="a.png"/>
+    </images>
+  </session>
+
+The groups element contains a list of all groups found in the
+session. Unfortunately in unit tests we are not able to construct a
+proper URL to a group, so above we exported with ``hyperlinks=False``
+to avoid hyperlink generation. See the functional doctest for an
+example of hyperlink generation. We should see at least the groups
+``collection`` and ``beta`` by name in the groups listing::
+
+  >>> tree = export(session['groups'], Settings(app_url='APP', 
+  ...                                           hyperlinks=False)) 
+  >>> print etree.tostring(tree, pretty_print=True)
+  <groups xmlns="http://studiolab.io.tudelft.nl/ns/imagestore"> 
+    <group name="collection">
+       ...
+    </group> 
+    <group name="beta">
+      ...  
+    </group>
+  </groups>
+
+We can also look at the sessions container::
+
+  >>> tree = export(store['sessions'], Settings(app_url='APP', 
+  ...                                           hyperlinks=False))
+  >>> print etree.tostring(tree, pretty_print=True)
+  <sessions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">
+    <session name="foo">
+      ...
+    </session>
+  </sessions>
+
+Finally we can also examine the application object itself::
+
+  >>> tree = export(store, Settings(app_url='APP', hyperlinks=False))
+  >>> print etree.tostring(tree, pretty_print=True)
+  <imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="example">
+    <sessions>
+      ...
+    </sessions>
+  </imagestore>
+
+Creating new objects given XML (POST)
+-------------------------------------
+
+Let's examine how to create new objects from XML. 
+
+Let's take some XML::
+
+  >>> xml = '''\
+  ... <image xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="alpha">
+  ...   <source name="a.png" />
+  ...   <metadata>
+  ...     <depth>1.0</depth>
+  ...     <rotation>2.0</rotation>
+  ...     <tags><tag>foo</tag><tag>bar</tag></tags>
+  ...     <x>3.0</x>
+  ...     <y>4.0</y>
+  ...   </metadata>
+  ... </image>
+  ... '''
+
+When we import this, we get an ImageObject::
+
+  >>> from imagestore.xml import import_
+  >>> obj = import_(xml)
+  >>> isinstance(obj, imagestore.ImageObject)
+  True
+
+With the correct name::
+
+  >>> obj.__name__
+  u'alpha'
+
+And the correct metadata::
+
+  >>> obj['metadata']['depth'].value
+  1.0
+  >>> obj['metadata']['rotation'].value
+  2.0
+  >>> sorted(list(obj['metadata']['tags'].value))
+  [u'bar', u'foo']
+  >>> obj['metadata']['x'].value
+  3.0
+  >>> obj['metadata']['y'].value
+  4.0
+
+Let's try to reconstruct the tree we created previously from its XML. We are
+going to replace the existing collection group::
+
+  >>> from StringIO import StringIO
+  >>> element = etree.parse(StringIO(all_xml)).getroot()
+  >>> from imagestore.interfaces import IXml
+  >>> IXml(collection).replace(element)
+
+Let's see whether we have the expected structure::
+ 
+  >>> sorted(collection['objects'].keys())
+  [u'alpha', u'beta']
+  >>> sorted(collection['objects']['beta']['objects'].keys())
+  [u'gamma']
+
+When we serialize this newly created object to XML, we get the same
+XML structure (except for any datetimes)::
+
+  >>> tree = export(collection, Settings(expand='all', hyperlinks=False, app_url='APP'))
+  >>> new_all_xml = etree.tostring(tree)
+  >>> datetime_normalize(new_all_xml) == datetime_normalize(all_xml)
+  True  
+
+Often we want to create a new object as a new sub-object of an
+existing one.
+
+Let's first create a new, empty session::
+  
+  >>> session2 = store['sessions']['bar'] = imagestore.Session()
+
+Let's get to the collection group::
+
+  >>> collection = session2['collection']
+
+Let's try to add an image to the collection group. This is not
+allowed, as we can only add it indirectly to ``objects``::
+
+  >>> from imagestore.interfaces import IXml
+  >>> element = etree.XML(xml)
+  >>> IXml(collection).factory(element)
+  Traceback (most recent call last):
+    ...
+  ContentNotAllowedError: Not allowed to add in this location: {http://studiolab.io.tudelft.nl/ns/imagestore}image
+
+We can add the image to ``objects``::
+
+  >>> IXml(collection['objects']).factory(element)
+  <imagestore.imageobj.ImageObject object at ...>
+  >>> sorted(collection['objects'].keys())
+  [u'alpha']
+
+We can also add a group with sub-groups. Let's add the collection
+inside the collection::
+
+  >>> element = etree.XML(all_xml)
+  >>> IXml(collection['objects']).factory(element)
+  <imagestore.group.Group object at ...>
+  >>> sorted(collection['objects'].keys())
+  [u'alpha', u'collection']
+  >>> sorted(collection['objects']['collection']['objects'].keys())
+  [u'alpha', u'beta']
+
+We cannot add something else though, such as objects::
+
+  >>> objects_el = export(collection['objects'], 
+  ...                     Settings(expand='all', app_url='APP')).getroot()
+  >>> IXml(collection['objects']).factory(objects_el)
+  Traceback (most recent call last):
+    ...
+  ContentNotAllowedError: Not allowed to add in this location: {http://studiolab.io.tudelft.nl/ns/imagestore}objects
+
+Now let's look into creating a session with a lot of content in one go::
+
+  >>> session2a_xml = '''
+  ... <session xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="2a">
+  ...   <group name="collection">
+  ...     <source name="root.jpg"/>
+  ...     <metadata>
+  ...       <depth>1.0</depth>
+  ...       <rotation>2.0</rotation>
+  ...       <tags/>
+  ...       <x>3.0</x>
+  ...       <y>4.0</y>
+  ...     </metadata>
+  ...     <objects>
+  ...       <group name="alpha">
+  ...         <source name="alpha.jpg"/>
+  ...         <metadata>
+  ...           <tags><tag>a</tag></tags>
+  ...         </metadata>
+  ...         <objects/>
+  ...       </group>
+  ...       <group name="beta">
+  ...         <source name="beta.jpg"/>
+  ...         <metadata>
+  ...           <tags><tag>b</tag></tags>
+  ...         </metadata>
+  ...         <objects/>
+  ...       </group>
+  ...     </objects>
+  ...   </group>
+  ...   <images/>
+  ... </session>
+  ... '''
+  >>> element = etree.XML(session2a_xml)
+  >>> IXml(store['sessions']).factory(element)
+  <imagestore.session.Session object at ...>
+
+We should now have session 2a::
+
+  >>> session2a = store['sessions']['2a']
+  >>> collection = session2a['collection']
+
+With the expected metadata::
+
+  >>> collection['metadata']['y'].value
+  4.0
+ 
+It should have the expected subobjects::
+
+  >>> sorted(collection['objects'].keys())
+  [u'alpha', u'beta']
+
+Replacing existing objects given XML (PUT)
+------------------------------------------
+  
+If we already have an object, we can parse XML into it (using a PUT
+request), replacing its content.
+
+Let's create a new session::
+
+  >>> session3 = store['sessions']['baz'] = imagestore.Session()
+  >>> collection = session3['collection']
+
+Let's add an object to the collection::
+
+  >>> IXml(collection['objects']).factory(etree.XML(xml))
+  <imagestore.imageobj.ImageObject object at ...>
+
+We now have a single object ``alpha`` present::
+ 
+  >>> sorted(collection['objects'].keys())
+  [u'alpha']
+
+We will now replace it with the following XML::
+
+  >>> xml2 = '''\
+  ... <image xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="alpha">
+  ...   <source src="APP/sessions/foo/images/a.png" name="a.png" />
+  ...   <metadata>
+  ...     <depth>5.0</depth>
+  ...     <rotation>6.0</rotation>
+  ...     <tags><tag>a</tag><tag>b</tag></tags>
+  ...     <x>7.0</x>
+  ...     <y>8.0</y>
+  ...   </metadata>
+  ... </image>
+  ... '''
+  >>> IXml(collection['objects']['alpha']).replace(etree.XML(xml2))
+ 
+We now expect the new content::
+
+  >>> alpha = collection['objects']['alpha']
+  >>> alpha['metadata']['depth'].value
+  5.0
+  >>> sorted(alpha['metadata']['tags'].value)
+  [u'a', u'b']
+
+Serialization will show us the same XML again::
+
+ >>> tree = export(alpha, Settings(app_url='APP'))
+ >>> print etree.tostring(tree, pretty_print=True)
+ <image xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="alpha">
+   <source src="APP/sessions/baz/images/a.png" href="source" name="a.png"/>
+   <metadata href="metadata">
+     <created href="metadata/created">...</created>
+     <custom href="metadata/custom"/>
+     <depth href="metadata/depth">5.0</depth>
+     <modified href="metadata/modified">...</modified>
+     <rotation href="metadata/rotation">6.0</rotation>
+     <tags href="metadata/tags">
+       <tag>a</tag>
+       <tag>b</tag>
+     </tags>
+     <x href="metadata/x">7.0</x>
+     <y href="metadata/y">8.0</y>
+   </metadata>
+ </image>

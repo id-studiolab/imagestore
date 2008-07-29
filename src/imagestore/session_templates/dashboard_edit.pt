@@ -1,0 +1,6 @@
+<metal:block use-macro="context/@@dashboard_macros/macros/main">
+<metal:block fill-slot="content">
+<h1>Edit session <span tal:replace="context/__name__">name</span></h1>
+<p class="small">Nothing to do here yet</p>
+</metal:block>
+</metal:block>

@@ -1,0 +1,14 @@
+TODO
+====
+
+* changing names when doing a PUT has undefined behavior.
+
+* the regular expression for name validation should use + instead of *.
+
+* when doing a copy & paste of session XML, can copy & paste
+  source-images XML. But there are no binaries associated with this. What
+  should the behavior be?
+
+* When submitting non-wellformed XML to a place where the method is
+  not allowed, return 405 method not allowed or 400 bad request? Right
+  now it's the latter.
