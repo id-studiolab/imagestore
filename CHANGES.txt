@@ -2,8 +2,8 @@
 CHANGES
 =======
 
-0.10 (unreleased)
-=================
+1.0b1 (2008-07-29)
+==================
 
 * Verified that ``++rest++flash`` URL also shows up in absolute URLs.
 
