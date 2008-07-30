@@ -5,7 +5,7 @@ from imagestore.sessioncontainer import SessionContainer
 from imagestore.session import Session
 from imagestore.interfaces import IRest, IImageStore, IXml, IXmlFactory
 from imagestore.xml import (XmlContainerBase, XmlContainerFactoryBase,
-                            export, Settings, NS)
+                            Settings, NS)
 from imagestore.rest import StoreLayer
 from imagestore.util import is_legal_name
 
@@ -13,7 +13,6 @@ from zope.app.catalog.interfaces import ICatalog
 from zope import component
 from zope.interface import Interface
 from zope.app.publication.interfaces import IBeforeTraverseEvent
-import zope.publisher.http
 from zope.exceptions.interfaces import DuplicationError
 
 class ImageStore(grok.Container, grok.Application):

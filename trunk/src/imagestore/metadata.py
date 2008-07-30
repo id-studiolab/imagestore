@@ -7,7 +7,6 @@ from imagestore.interfaces import IXml, IRest
 from imagestore.xml import XmlContainerBase
 from imagestore.xml import (xml_el, xml_href, xml_replace, XmlBase,
                             NS, NS_MAP, XmlFactoryBase)
-from imagestore.rest import StoreLayer
 from imagestore.util import parse_iso_to_datetime
 
 class Metadata(grok.Container):

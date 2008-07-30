@@ -1,17 +1,10 @@
 import grok
-from lxml import etree
-
-from zope import component
-from zope.app.catalog.interfaces import ICatalog
-from zope.traversing.interfaces import IPhysicallyLocatable
 
 from imagestore.interfaces import IXml, IRest
 
 from imagestore.group import Group
-from imagestore.xml import (export, Settings, xml_el, xml_href, NS,
-                         XmlBase, XmlFactoryBase)
+from imagestore.xml import xml_el, NS, XmlBase, XmlFactoryBase
 from imagestore.util import get_request
-from imagestore.rest import StoreLayer
 
 class GroupListing(grok.Model):
     grok.implements(IRest)

@@ -9,8 +9,6 @@ from imagestore.metadata import Metadata
 from imagestore.source import Source
 from imagestore.interfaces import IRest, IImageStore, IPathIndexable
 
-from zope import event
-
 class Object(grok.Container):
     grok.implements(IRest)
     
