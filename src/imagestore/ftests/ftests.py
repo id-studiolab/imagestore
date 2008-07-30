@@ -3,9 +3,8 @@ import unittest
 
 from lxml import etree
 
-import zope.testbrowser.browser
 import zope.testbrowser.testing
-from zope.app.testing.functional import FunctionalDocFileSuite, HTTPCaller
+from zope.app.testing.functional import HTTPCaller
                                          
 from imagestore.testing import http_get, http_post, http_put, http_delete
 from imagestore.testing import FunctionalLayer
