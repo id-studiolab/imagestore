@@ -1,6 +1,7 @@
 import grok
 
 from imagestore.imagecontainer import ImageContainer
+from imagestore.permissioncontainer import PermissionContainer
 from imagestore.grouplisting import GroupListing
 from imagestore.group import Group
 from imagestore.interfaces import IRest, ISession
@@ -11,6 +12,7 @@ class Session(grok.Container):
 
 @grok.subscribe(Session, grok.IObjectAddedEvent)
 def session_added(obj, event):
+    obj['permissions'] = PermissionContainer()
     obj['images'] = ImageContainer()
     obj['collection'] = Group('UNKNOWN')
     obj['groups'] = GroupListing()

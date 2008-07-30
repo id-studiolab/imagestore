@@ -2,6 +2,7 @@ import grok
 from lxml import etree
 
 from imagestore.sessioncontainer import SessionContainer
+from imagestore.accountcontainer import AccountContainer
 from imagestore.session import Session
 from imagestore.interfaces import IRest, IImageStore, IXml, IXmlFactory
 from imagestore.xml import (XmlContainerBase, XmlContainerFactoryBase,
@@ -21,7 +22,8 @@ class ImageStore(grok.Container, grok.Application):
     def __init__(self):
         super(ImageStore, self).__init__()
         self['sessions'] = SessionContainer()
-
+        self['accounts'] = AccountContainer()
+        
     def search(self, tags):
         catalog = component.getUtility(ICatalog)
         return catalog.searchResults(tags={'any_of': tags})

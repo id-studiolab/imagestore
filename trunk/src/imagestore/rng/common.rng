@@ -5,6 +5,26 @@
       <ref name="sessions"/>
     </element>
   </define>
+  <define name="accounts">
+    <element name="ids:accounts">
+      <ref name="href_attr"/>
+      <zeroOrMore>
+        <ref name="account"/>
+      </zeroOrMore>
+    </element>
+  </define>
+  <define name="account">
+    <element name="ids:account">
+      <ref name="attrs"/>
+      <ref name="password"/>
+    </element>
+  </define>
+  <define name="password">
+    <element name="ids:password">
+      <ref name="href_attr"/>
+      <text/>
+    </element>
+  </define>
   <define name="sessions">
     <element name="ids:sessions">
       <ref name="href_attr"/>
@@ -25,6 +45,23 @@
       <optional>
         <ref name="images"/>
       </optional>
+      <optional>
+        <ref name="permissions"/>
+      </optional>
+    </element>
+  </define>
+  <define name="permissions">
+    <element name="ids:permissions">
+      <ref name="href_attr"/>
+      <zeroOrMore>
+        <ref name="permission"/>
+      </zeroOrMore>
+    </element>
+  </define>
+  <define name="permission">
+    <element name="ids:permission">
+      <ref name="attrs"/>
+      <ref name="permission_attr"/>
     </element>
   </define>
   <define name="groups">
@@ -121,6 +158,15 @@
       <data type="string">
         <param name="pattern">[a-zA-Z0-9_\.\-]*</param>
       </data>
+    </attribute>
+  </define>
+  <define name="permission_attr">
+    <attribute name="permission">
+      <choice>
+        <value>none</value>
+        <value>read</value>
+        <value>write</value>
+      </choice>
     </attribute>
   </define>
 </grammar>
