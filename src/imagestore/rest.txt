@@ -75,7 +75,7 @@ XML documents are essentially just plaintext documents. Let's take a
 look at the raw text of the document::
 
   >>> xml
-  '<imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="store"><sessions href="sessions"/></imagestore>'
+  '<imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="store"><accounts href="accounts"/><sessions href="sessions"/></imagestore>'
 
 We need to parse this document using an XML parser in order to do
 anything useful with it, so let's parse it::
@@ -96,6 +96,7 @@ pretty-printed form::
 
   >>> print etree.tostring(el, pretty_print=True)
   <imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="store">
+    <accounts href="accounts"/>
     <sessions href="sessions"/>
   </imagestore>
 
@@ -117,6 +118,7 @@ Let's see whether it works::
 
   >>> el = pretty(response)
   <imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="store">
+    <accounts href="accounts"/>
     <sessions href="sessions"/>
   </imagestore>
 
@@ -156,7 +158,7 @@ special ``xmlns=`` declaration in the XML document, all elements in
 this document will be in this namespace. Let's for example look at the
 ``sessions`` element that is below the top element::
 
-  >>> el[0].tag
+  >>> el[1].tag
   '{http://studiolab.io.tudelft.nl/ns/imagestore}sessions'
 
 In technical terms, this special way to represent the element name is
@@ -262,9 +264,9 @@ Let's get it::
 
   >>> sessions_el = l[0]
  
-In fact it's one we've already seen before (``el[0]``)::
+In fact it's one we've already seen before (``el[1]``)::
 
-  >>> sessions_el is el[0]
+  >>> sessions_el is el[1]
   True
   >>> sessions_el.tag
   '{http://studiolab.io.tudelft.nl/ns/imagestore}sessions'
@@ -397,6 +399,9 @@ The new session should now be visible in the sessions container::
         ...
       </groups>
       <images href="one/images"/>
+      <permissions href="one/permissions">
+        <permission href="one/permissions/default" name="default" permission="write"/>
+      </permissions>
     </session>
   </sessions>
 
@@ -447,6 +452,9 @@ We can examine this session::
       ...
     </groups>
     <images href="images"/>
+    <permissions href="permissions">
+      <permission href="permissions/default" name="default" permission="write"/>
+    </permissions>
   </session>
 
 Images in the images container

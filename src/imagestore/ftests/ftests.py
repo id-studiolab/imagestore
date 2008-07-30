@@ -78,5 +78,10 @@ def test_suite():
         globs = search_globs,
         )
     comprehensive.layer = FunctionalLayer
-    tests = [rest, search, fake, comprehensive]
+    auth = FunctionalBlobDocFileSuite(
+        '../auth.txt',
+        globs = search_globs,
+        )
+    auth.layer = FunctionalLayer
+    tests = [rest, search, fake, comprehensive, auth]
     return unittest.TestSuite(tests)

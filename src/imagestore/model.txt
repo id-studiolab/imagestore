@@ -341,6 +341,9 @@ We look at a session as a whole::
     <images>
       <source-image name="a.png"/>
     </images>
+    <permissions>
+      <permission name="default" permission="write"/>
+    </permissions>
   </session>
 
 The groups element contains a list of all groups found in the
@@ -378,6 +381,7 @@ Finally we can also examine the application object itself::
   >>> tree = export(store, Settings(app_url='APP', hyperlinks=False))
   >>> print etree.tostring(tree, pretty_print=True)
   <imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="example">
+    <accounts/>
     <sessions>
       ...
     </sessions>

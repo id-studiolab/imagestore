@@ -2,9 +2,20 @@ namespace ids = "http://studiolab.io.tudelft.nl/ns/imagestore"
 
 imagestore = element ids:imagestore { sessions }
 
+accounts = element ids:accounts { href_attr, account* }
+
+account = element ids:account { attrs, password }
+
+password = element ids:password { href_attr, text }
+
 sessions = element ids:sessions { href_attr, session* }
 
-session = element ids:session { attrs, group?, groups?, images? }
+session = element ids:session { attrs, group?, groups?, images?, permissions?}
+
+permissions = element ids:permissions { href_attr, 
+                                        permission* }
+
+permission = element ids:permission { attrs, permission_attr }
 
 groups = element ids:groups { href_attr, group* }
 
@@ -34,4 +45,7 @@ attrs = href_attr, name_attr
 href_attr = attribute href { xsd:anyURI } ?
 
 name_attr = attribute name { xsd:string { pattern = "[a-zA-Z0-9_\.\-]*"}}
+
+permission_attr = attribute permission { "none" | "read" | "write" }
+
 

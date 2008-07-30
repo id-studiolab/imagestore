@@ -1,0 +1,265 @@
+Authentication and authorization in imageSTORE
+==============================================
+
+imageSTORE allows user accounts to be created. Users can then be
+assigned read/write or read-only permissions on a per-session basis.
+
+Creating and managing accounts
+------------------------------
+
+Let's create a new store::
+
+  >>> from imagestore.app import ImageStore
+  >>> store = ImageStore()
+  >>> root_container = getRootFolder()
+  >>> root_container['store'] = store
+
+Let's look at the XML of the whole store::
+
+  >>> app_url = 'http://localhost/store'
+  >>> response = http_get(app_url)
+  >>> el = pretty(response)
+  <imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="store">
+    <accounts href="accounts"/>
+    <sessions href="sessions"/>
+  </imagestore>
+ 
+The ``accounts`` URL allows us to define new user accounts::
+
+  >>> accounts_url = url_to(app_url, el, 'ids:accounts/@href')
+  >>> accounts_url
+  'http://localhost/store/accounts'
+
+We also will create a URL to the sessions for later use::
+
+  >>> sessions_url = url_to(app_url, el, 'ids:sessions/@href')
+  
+Let's create a new account for user ``foo``::
+
+  >>> account_xml = '''
+  ...   <account xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="foo">
+  ...     <password>bar</password>
+  ...   </account>
+  ... '''
+  >>> response = http_post(accounts_url, account_xml)
+
+The new account is now visible::
+
+  >>> response = http_get(accounts_url)
+  >>> el = pretty(response)
+  <accounts xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <account href="foo" name="foo">
+      <password/>
+    </account>
+  </accounts>
+
+Note that the password is not visible; it can only be changed.
+
+Let's zoom in on the actual account::
+
+  >>> account_url = url_to(accounts_url, el, 'ids:account[@name="foo"]/@href')
+  >>> response = http_get(account_url)
+  >>> el = pretty(response)
+  <account xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="foo">
+    <password/>
+  </account>
+
+Permissions
+-----------
+
+Sessions can be restricted with three levels of permissions:
+
+* ``write`` - allow read and write access (GET, POST, PUT, DELETE)
+
+* ``read`` - read only access (GET only)
+
+* ``none`` - no access at all
+
+Sessions have a ``default`` permission, which can be any of ``write``,
+``read`` or ``none``. By default sessions are open to the public, and
+therefore have a ``default`` permission of ``write``.
+
+Let's demonstrate the default first by creating a session that's open
+to the public::
+
+  >>> session_xml = '''
+  ...   <session xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="public">
+  ...   </session>
+  ... '''
+  >>> response = http_post(sessions_url, session_xml)
+
+The session is now present, and it has a permission structure::
+
+ >>> response = http_get(sessions_url)
+ >>> el = pretty(response)
+ <sessions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+   <session href="public" name="public">
+     ...
+     <permissions href="public/permissions">
+       <permission href="public/permissions/default" name="default" permission="write"/>
+     </permissions>
+   </session>
+ </sessions>
+
+We'll create a session next that is read-only by default. We do this
+by copying and modifying the XML of the ``public`` session::
+
+  >>> session_el = xpath(el, 'ids:session[@name="public"]')
+  >>> session_el.set('name', "readonly")
+  >>> permission_el = xpath(session_el, 'ids:permissions/ids:permission[@name="default"]')
+  >>> permission_el.set("permission", "read")
+  >>> from lxml import etree
+  >>> xml = etree.tostring(session_el, encoding='UTF-8')
+  >>> response = http_post(sessions_url, xml)
+  >>> response.getStatusString()
+  '201 Created'
+
+Let's see whether our new ``readonly`` session is indeed there::
+
+  >>> response = http_get(sessions_url)
+  >>> el = pretty(response)
+  <sessions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <session href="public" name="public">
+      ...
+      <permissions href="public/permissions">
+        <permission href="public/permissions/default" name="default" permission="write"/>
+      </permissions>
+    </session>
+    <session href="readonly" name="readonly">
+      ...
+      <permissions href="readonly/permissions">
+        <permission href="readonly/permissions/default" name="default" permission="read"/>
+      </permissions>
+    </session>
+  </sessions>
+
+We will also a session that's entirely closed by default from the start::
+
+  >>> session_el.set('name', "closed")
+  >>> permission_el.set("permission", "none")
+  >>> xml = etree.tostring(session_el, encoding='UTF-8')
+  >>> response = http_post(sessions_url, xml)
+  >>> response.getStatusString()
+  '201 Created'
+
+It's indeed there after creation::
+
+  >>> response = http_get(sessions_url)
+  >>> el = pretty(response)
+  <sessions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <session href="closed" name="closed">
+      ...
+      <permissions href="closed/permissions">
+        <permission href="closed/permissions/default" name="default" permission="none"/>
+      </permissions>
+    </session>
+    <session href="public" name="public">
+      ...
+      <permissions href="public/permissions">
+        <permission href="public/permissions/default" name="default" permission="write"/>
+      </permissions>
+    </session>
+    <session href="readonly" name="readonly">
+      ...
+      <permissions href="readonly/permissions">
+        <permission href="readonly/permissions/default" name="default" permission="read"/>
+      </permissions>
+    </session>
+  </sessions>
+
+Let's zoom in on the particular permission URLs::
+
+  >>> closed_permissions_url = url_to(sessions_url, el,
+  ...   'ids:session[@name="closed"]/ids:permissions/@href')
+  >>> public_permissions_url = url_to(sessions_url, el,
+  ...   'ids:session[@name="public"]/ids:permissions/@href')
+  >>> readonly_permissions_url = url_to(sessions_url, el,
+  ...   'ids:session[@name="readonly"]/ids:permissions/@href')
+
+Giving out permissions
+----------------------
+
+Let's give a ``write`` permission to the account ``foo`` in session
+``readonly``::
+
+  >>> xml = """
+  ...   <permission xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" 
+  ...               name="foo" permission="write" />
+  ... """
+  >>> response = http_post(readonly_permissions_url, xml)
+  >>> response.getStatusString()
+  '201 Created'
+
+Let's confirm that the permission is now indeed there::
+
+  >>> response = http_get(readonly_permissions_url)
+  >>> el = pretty(response)
+  <permissions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <permission href="default" name="default" permission="read"/>
+    <permission href="foo" name="foo" permission="write"/>
+  </permissions>
+
+We'll also give the ``read`` permission to the account ``foo`` in session
+``closed``::
+
+  >>> xml = """
+  ...   <permission xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" 
+  ...               name="foo" permission="read" />
+  ... """
+  >>> response = http_post(closed_permissions_url, xml)
+  >>> response.getStatusString()
+  '201 Created'
+
+We cannot assign permissions for accounts that do not exist::
+
+  >>> xml = """
+  ...   <permission xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" 
+  ...               name="doesnotexist" permission="read" />
+  ... """
+  >>> response = http_post(closed_permissions_url, xml)
+  >>> response.getStatusString()
+  '400 Bad Request'
+
+Let's give ``foo`` the ``write`` permission in ``public`` (a redundant
+operation, but it will succeed)::
+
+  >>> xml = """
+  ...   <permission xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" 
+  ...               name="foo" permission="write" />
+  ... """
+  >>> response = http_post(public_permissions_url, xml)
+  >>> response.getStatusString()
+  '201 Created'
+  >>> response = http_get(public_permissions_url)
+  >>> el = pretty(response)
+  <permissions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <permission href="default" name="default" permission="write"/>
+    <permission href="foo" name="foo" permission="write"/>
+  </permissions>
+
+Let's change this permission to a ``read`` permission::
+
+  >>> permission_url = url_to(public_permissions_url, el, 'ids:permission[@name="foo"]/@href')
+  >>> xml = """
+  ...   <permission xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" 
+  ...               name="foo" permission="read" />
+  ... """
+  >>> response = http_put(permission_url, xml)
+  >>> response.getStatusString()
+  '200 Ok'
+  >>> response = http_get(public_permissions_url)
+  >>> el = pretty(response)
+  <permissions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <permission href="default" name="default" permission="write"/>
+    <permission href="foo" name="foo" permission="read"/>
+  </permissions>
+
+We can remove this permission again by a DELETE operation::
+
+  >>> response = http_delete(permission_url)
+  >>> response = http_get(public_permissions_url)
+  >>> el = pretty(response)
+  <permissions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <permission href="default" name="default" permission="write"/>
+  </permissions>
+ 
