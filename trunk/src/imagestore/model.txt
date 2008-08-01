@@ -16,9 +16,11 @@ We give the store a name::
 
   >>> store.__name__ = 'example'
 
-An image store has a sessions container inside it::
-  >>> 'sessions' in store
-  True
+An image store has a number of containers in it::
+
+  >>> store['sessions'] = imagestore.SessionContainer()
+  >>> store['accounts'] = imagestore.AccountContainer()
+  >>> store['permissions'] = imagestore.PermissionContainer()
 
 Let's add a session called ``foo``::
 
@@ -341,9 +343,7 @@ We look at a session as a whole::
     <images>
       <source-image name="a.png"/>
     </images>
-    <permissions>
-      <permission name="default" permission="write"/>
-    </permissions>
+    <permissions/>
   </session>
 
 The groups element contains a list of all groups found in the
@@ -382,6 +382,7 @@ Finally we can also examine the application object itself::
   >>> print etree.tostring(tree, pretty_print=True)
   <imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="example">
     <accounts/>
+    <permissions/>
     <sessions>
       ...
     </sessions>

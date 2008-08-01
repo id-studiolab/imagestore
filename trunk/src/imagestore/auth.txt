@@ -21,9 +21,15 @@ Let's look at the XML of the whole store::
   >>> el = pretty(response)
   <imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="store">
     <accounts href="accounts"/>
+    <permissions href="permissions">
+      <permission href="permissions/default" name="default" permission="write"/>
+    </permissions>
     <sessions href="sessions"/>
   </imagestore>
  
+We see two elements that are relevant to authentication and
+authorization, ``accounts`` and ``permissions``.
+
 The ``accounts`` URL allows us to define new user accounts::
 
   >>> accounts_url = url_to(app_url, el, 'ids:accounts/@href')
@@ -67,7 +73,12 @@ Let's zoom in on the actual account::
 Permissions
 -----------
 
-Sessions can be restricted with three levels of permissions:
+The whole application is protected by permissions. By default
+everybody has the ``write`` permission over the whole store; this is
+what the ``<permission name="default" permission="write"/>`` means.
+
+Sessions can also have restricted permissions. There are three levels
+of permissions:
 
 * ``write`` - allow read and write access (GET, POST, PUT, DELETE)
 
@@ -75,9 +86,9 @@ Sessions can be restricted with three levels of permissions:
 
 * ``none`` - no access at all
 
-Sessions have a ``default`` permission, which can be any of ``write``,
-``read`` or ``none``. By default sessions are open to the public, and
-therefore have a ``default`` permission of ``write``.
+Sessions can have a ``default`` permission, which can be any of
+``write``, ``read`` or ``none``.  By default sessions are open to the
+public, as the global ``default`` permission is set to ``write``.
 
 Let's demonstrate the default first by creating a session that's open
 to the public::
@@ -88,16 +99,15 @@ to the public::
   ... '''
   >>> response = http_post(sessions_url, session_xml)
 
-The session is now present, and it has a permission structure::
+The session is now present, without a permission structure (but
+inheriting the global ``default`` permission of ``write``)::
 
  >>> response = http_get(sessions_url)
  >>> el = pretty(response)
  <sessions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
    <session href="public" name="public">
      ...
-     <permissions href="public/permissions">
-       <permission href="public/permissions/default" name="default" permission="write"/>
-     </permissions>
+     <permissions href="public/permissions"/>
    </session>
  </sessions>
 
@@ -106,9 +116,10 @@ by copying and modifying the XML of the ``public`` session::
 
   >>> session_el = xpath(el, 'ids:session[@name="public"]')
   >>> session_el.set('name', "readonly")
-  >>> permission_el = xpath(session_el, 'ids:permissions/ids:permission[@name="default"]')
-  >>> permission_el.set("permission", "read")
+  >>> permissions_el = xpath(session_el, 'ids:permissions')
   >>> from lxml import etree
+  >>> permission_el = etree.SubElement(permissions_el, 'permission', 
+  ...                                  name='default', permission='read')
   >>> xml = etree.tostring(session_el, encoding='UTF-8')
   >>> response = http_post(sessions_url, xml)
   >>> response.getStatusString()
@@ -121,9 +132,7 @@ Let's see whether our new ``readonly`` session is indeed there::
   <sessions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
     <session href="public" name="public">
       ...
-      <permissions href="public/permissions">
-        <permission href="public/permissions/default" name="default" permission="write"/>
-      </permissions>
+      <permissions href="public/permissions"/>
     </session>
     <session href="readonly" name="readonly">
       ...
@@ -155,9 +164,7 @@ It's indeed there after creation::
     </session>
     <session href="public" name="public">
       ...
-      <permissions href="public/permissions">
-        <permission href="public/permissions/default" name="default" permission="write"/>
-      </permissions>
+      <permissions href="public/permissions"/>
     </session>
     <session href="readonly" name="readonly">
       ...
@@ -233,7 +240,6 @@ operation, but it will succeed)::
   >>> response = http_get(public_permissions_url)
   >>> el = pretty(response)
   <permissions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
-    <permission href="default" name="default" permission="write"/>
     <permission href="foo" name="foo" permission="write"/>
   </permissions>
 
@@ -250,7 +256,6 @@ Let's change this permission to a ``read`` permission::
   >>> response = http_get(public_permissions_url)
   >>> el = pretty(response)
   <permissions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
-    <permission href="default" name="default" permission="write"/>
     <permission href="foo" name="foo" permission="read"/>
   </permissions>
 
@@ -259,7 +264,5 @@ We can remove this permission again by a DELETE operation::
   >>> response = http_delete(permission_url)
   >>> response = http_get(public_permissions_url)
   >>> el = pretty(response)
-  <permissions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
-    <permission href="default" name="default" permission="write"/>
-  </permissions>
+  <permissions xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="."/>
  

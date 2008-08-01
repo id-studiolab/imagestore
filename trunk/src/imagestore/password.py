@@ -1,13 +1,22 @@
 import grok
 
+from zope import component
+
+from zope.app.authentication.interfaces import IPasswordManager
+
 from imagestore.interfaces import IRest
 from imagestore.xml import xml_el, XmlBase, XmlFactoryBase, NS
 
 class Password(grok.Model):
     grok.implements(IRest)
 
-    def __init__(self):
-        pass
+    def setPassword(self, password):
+        passwordmanager = component.getUtility(IPasswordManager, 'SHA1')
+        self.password = passwordmanager.encodePassword(password)
+
+    def checkPassword(self, password):
+        passwordmanager = component.getUtility(IPasswordManager, 'SHA1')
+        return passwordmanager.checkPassword(self.password, password)
 
 class PasswordXml(XmlBase):
     tag = 'password'
@@ -27,6 +36,5 @@ class PasswordXmlFactory(XmlFactoryBase):
         return result
     
     def replace(self, element, result):
-        pass
+        result.setPassword(element.text)
 
-        
