@@ -12,6 +12,7 @@ from imagestore.xml import (export, Settings, xml_el, xml_href, NS,
 from imagestore.util import get_request
 from imagestore.rest import StoreLayer
 from imagestore.util import liberal_parse_iso_to_datetime
+from imagestore.rest import Read
 
 class ObjectContainer(grok.Container):
     grok.implements(IRest)
@@ -84,7 +85,8 @@ class ObjectsFactory(XmlContainerFactoryBase):
 
 class Rest(grok.REST):
     grok.layer(StoreLayer)
-    
+
+    @grok.require(Read)
     def GET(self):
         self.response.setHeader('Content-Type',
                                 'text/xml; charset=UTF-8')

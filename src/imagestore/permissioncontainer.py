@@ -7,10 +7,6 @@ from imagestore.permission import Permission
 class PermissionContainer(grok.Container):
     grok.implements(IRest)
 
-@grok.subscribe(PermissionContainer, grok.IObjectAddedEvent)
-def session_added(obj, event):
-    obj['default'] = Permission('write')
-
 class PermissionContainerXml(XmlContainerBase):
     tag = 'permissions'
     is_deletable = False

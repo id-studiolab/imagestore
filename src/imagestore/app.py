@@ -3,30 +3,45 @@ from lxml import etree
 
 from imagestore.sessioncontainer import SessionContainer
 from imagestore.accountcontainer import AccountContainer
+from imagestore.permissioncontainer import PermissionContainer
+
 from imagestore.session import Session
 from imagestore.interfaces import IRest, IImageStore, IXml, IXmlFactory
 from imagestore.xml import (XmlContainerBase, XmlContainerFactoryBase,
                             Settings, NS)
 from imagestore.rest import StoreLayer
 from imagestore.util import is_legal_name
+from imagestore.auth import setup_authentication
+from imagestore.permission import Permission
 
 from zope.app.catalog.interfaces import ICatalog
 from zope import component
 from zope.interface import Interface
 from zope.app.publication.interfaces import IBeforeTraverseEvent
 from zope.exceptions.interfaces import DuplicationError
+from zope.app.authentication.authentication import PluggableAuthentication
+from zope.app.security.interfaces import IAuthentication
 
 class ImageStore(grok.Container, grok.Application):
     grok.implements(IRest, IImageStore)
-    
-    def __init__(self):
-        super(ImageStore, self).__init__()
-        self['sessions'] = SessionContainer()
-        self['accounts'] = AccountContainer()
-        
+
+    grok.local_utility(
+        PluggableAuthentication, provides=IAuthentication,
+        setup=setup_authentication,
+        public=False,
+        )
+      
     def search(self, tags):
         catalog = component.getUtility(ICatalog)
         return catalog.searchResults(tags={'any_of': tags})
+
+@grok.subscribe(ImageStore, grok.IObjectAddedEvent)
+def imagestore_add(obj, event):
+    obj['accounts'] = AccountContainer()
+    obj['permissions'] = permissions = PermissionContainer()
+    # by default everybody has the write permission everywhere
+    permissions['default'] = Permission('write')
+    obj['sessions'] = SessionContainer()
 
 @grok.subscribe(ImageStore, IBeforeTraverseEvent)
 def restSkin(obj, event):

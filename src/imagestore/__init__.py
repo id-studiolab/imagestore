@@ -1,5 +1,7 @@
 from imagestore.app import ImageStore
 from imagestore.sessioncontainer import SessionContainer
+from imagestore.accountcontainer import AccountContainer
+from imagestore.permissioncontainer import PermissionContainer
 from imagestore.session import Session
 from imagestore.image import Image
 from imagestore.objectcontainer import ObjectContainer

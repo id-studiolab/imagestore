@@ -17,10 +17,28 @@ class StoreLayer(grok.IRESTLayer):
 class FlashLayer(StoreLayer):
     pass
 
+class Read(grok.Permission):
+    grok.name('imagestore.Read')
+
+class Write(grok.Permission):
+    grok.name('imagestore.Write')
+    
+class Reader(grok.Role):
+    grok.name('imagestore.Reader')
+    grok.title("Reader")
+    grok.permissions('imagestore.Read')
+    
+class Writer(grok.Role):
+    grok.name('imagestore.Writer')
+    grok.title("Writer")
+    grok.permissions('imagestore.Read',
+                     'imagestore.Write')
+
 class Rest(grok.REST):
     grok.context(IRest)
     grok.layer(StoreLayer)
-    
+
+    @grok.require(Read)
     def GET(self):
         self.response.setHeader('Content-Type',
                                 'application/xml; charset=UTF-8')
@@ -31,6 +49,7 @@ class Rest(grok.REST):
         embed_http(self.request, self.response, tree)
         return etree.tostring(tree, encoding='UTF-8')
 
+    @grok.require(Write)
     def POST(self):
         self.response.setHeader('Content-Type',
                                 'application/xml; charset=UTF-8')
@@ -50,7 +69,8 @@ class Rest(grok.REST):
             self.response.setHeader('Location', grok.url(self.request, obj))
         embed_http(self.request, self.response, tree)
         return etree.tostring(tree, encoding='UTF-8')
-    
+
+    @grok.require(Write)
     def PUT(self):
         self.response.setHeader('Content-Type',
                                 'application/xml; charset=UTF-8')
@@ -98,6 +118,7 @@ class Rest(grok.REST):
         # shouldn't ever reach here
         assert False, "Failure in PUT or POST processing"
 
+    @grok.require(Write)
     def DELETE(self):
         self.response.setHeader('Content-Type',
                                 'application/xml; charset=UTF-8')

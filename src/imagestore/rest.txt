@@ -75,7 +75,7 @@ XML documents are essentially just plaintext documents. Let's take a
 look at the raw text of the document::
 
   >>> xml
-  '<imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="store"><accounts href="accounts"/><sessions href="sessions"/></imagestore>'
+  '<imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="store"><accounts href="accounts"/><permissions href="permissions"><permission href="permissions/default" name="default" permission="write"/></permissions><sessions href="sessions"/></imagestore>'
 
 We need to parse this document using an XML parser in order to do
 anything useful with it, so let's parse it::
@@ -97,6 +97,9 @@ pretty-printed form::
   >>> print etree.tostring(el, pretty_print=True)
   <imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="store">
     <accounts href="accounts"/>
+    <permissions href="permissions">
+      <permission href="permissions/default" name="default" permission="write"/>
+    </permissions>
     <sessions href="sessions"/>
   </imagestore>
 
@@ -119,6 +122,9 @@ Let's see whether it works::
   >>> el = pretty(response)
   <imagestore xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="." name="store">
     <accounts href="accounts"/>
+    <permissions href="permissions">
+      <permission href="permissions/default" name="default" permission="write"/>
+    </permissions>
     <sessions href="sessions"/>
   </imagestore>
 
@@ -156,9 +162,10 @@ What you see here is that the lxml library represents the
 ``{http://studiolab.io.tudelft.nl/ns/imagestore}``. Because of the
 special ``xmlns=`` declaration in the XML document, all elements in
 this document will be in this namespace. Let's for example look at the
-``sessions`` element that is below the top element::
+``sessions`` element that is below the top element (the third
+element, so index ``2``)::
 
-  >>> el[1].tag
+  >>> el[2].tag
   '{http://studiolab.io.tudelft.nl/ns/imagestore}sessions'
 
 In technical terms, this special way to represent the element name is
@@ -174,7 +181,7 @@ The store has a number of sessions in it, contained in the sessions
 container. There are no sessions yet, so the ``sessions`` element in
 the XML is empty::
 
-  >>> len(el[0])
+  >>> len(el[2])
   0
 
 We want to create a new session now. To do this, we need to have the
@@ -264,9 +271,9 @@ Let's get it::
 
   >>> sessions_el = l[0]
  
-In fact it's one we've already seen before (``el[1]``)::
+In fact it's one we've already seen before (``el[2]``)::
 
-  >>> sessions_el is el[1]
+  >>> sessions_el is el[2]
   True
   >>> sessions_el.tag
   '{http://studiolab.io.tudelft.nl/ns/imagestore}sessions'
@@ -399,9 +406,7 @@ The new session should now be visible in the sessions container::
         ...
       </groups>
       <images href="one/images"/>
-      <permissions href="one/permissions">
-        <permission href="one/permissions/default" name="default" permission="write"/>
-      </permissions>
+      <permissions href="one/permissions"/>
     </session>
   </sessions>
 
@@ -452,9 +457,7 @@ We can examine this session::
       ...
     </groups>
     <images href="images"/>
-    <permissions href="permissions">
-      <permission href="permissions/default" name="default" permission="write"/>
-    </permissions>
+    <permissions href="permissions"/>
   </session>
 
 Images in the images container

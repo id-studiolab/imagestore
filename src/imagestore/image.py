@@ -7,7 +7,8 @@ from z3c.blobfile.image import Image
 from imagestore.interfaces import IXml
 from imagestore.xml import xml_el
 from imagestore.rest import (StoreLayer, fakePutOrDelete,
-                          success_message, error_message, embed_http)
+                             success_message, error_message, embed_http,
+                             Read, Write)
 
 class ImageXml(grok.Adapter):
     grok.context(Image)
@@ -50,9 +51,11 @@ class ImageRest(grok.REST):
     grok.layer(StoreLayer)
     grok.context(Image)
 
+    @grok.require(Read)
     def GET(self):
         return self.context.data
 
+    @grok.require(Write)
     def POST(self):
         self.response.setHeader('Content-Type',
                                 'application/xml; charset=UTF-8')
@@ -64,7 +67,8 @@ class ImageRest(grok.REST):
             "Creation of content with POST is not allowed at this location.")
         embed_http(self.request, self.response, tree)
         return etree.tostring(tree, encoding='UTF-8')
-        
+
+    @grok.require(Write)
     def PUT(self):
         self.response.setHeader('Content-Type',
                                 'application/xml; charset=UTF-8')
@@ -74,6 +78,7 @@ class ImageRest(grok.REST):
         embed_http(self.request, self.response, tree)
         return etree.tostring(tree, encoding='UTF-8')
 
+    @grok.require(Write)
     def DELETE(self):
         self.response.setHeader('Content-Type',
                                 'application/xml; charset=UTF-8')
