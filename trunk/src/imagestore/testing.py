@@ -26,7 +26,7 @@ def http_call(method, path, data=None, basic=None, **kw):
     for key, value in kw.items():
         request_string += '%s: %s\n' % (key, value)
     if basic is not None:
-        request_string += ('HTTP_AUTHORIZATION: Basic %s' %
+        request_string += ('AUTHORIZATION: Basic %s\n' %
                            base64.encodestring(basic)) 
     if data is not None:
         request_string += '\r\n'

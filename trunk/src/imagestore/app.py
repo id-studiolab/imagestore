@@ -12,7 +12,7 @@ from imagestore.xml import (XmlContainerBase, XmlContainerFactoryBase,
 from imagestore.rest import StoreLayer
 from imagestore.util import is_legal_name
 from imagestore.auth import setup_authentication
-from imagestore.permission import Permission
+from imagestore.permission import Permission, add_permission
 
 from zope.app.catalog.interfaces import ICatalog
 from zope import component
@@ -39,9 +39,10 @@ class ImageStore(grok.Container, grok.Application):
 def imagestore_add(obj, event):
     obj['accounts'] = AccountContainer()
     obj['permissions'] = permissions = PermissionContainer()
-    # by default everybody has the write permission everywhere
-    permissions['default'] = Permission('write')
     obj['sessions'] = SessionContainer()
+    # by default everybody has the write permission everywhere
+    permissions['default'] = perm = Permission('write')
+    add_permission(perm)
 
 @grok.subscribe(ImageStore, IBeforeTraverseEvent)
 def restSkin(obj, event):

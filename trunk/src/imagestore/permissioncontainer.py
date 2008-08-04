@@ -12,7 +12,7 @@ class PermissionContainerXml(XmlContainerBase):
     is_deletable = False
 
     def is_allowed(self, obj):
-        if obj.__name__ not in get_accounts():
+        if obj.__name__ != 'default' and obj.__name__ not in get_accounts():
             return False
         return isinstance(obj, Permission)
 

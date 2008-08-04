@@ -23,7 +23,8 @@ class ImageXml(grok.Adapter):
 class Formdata(grok.View):
     grok.context(Image)
     grok.layer(StoreLayer)
-
+    grok.require(Write)
+    
     tree = None
     
     def update(self, **kw):
