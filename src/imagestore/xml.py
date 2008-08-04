@@ -3,6 +3,8 @@ from lxml import etree
 import os
 import grok
 from zope import component
+from zope.security.management import getInteraction
+from zope.security.interfaces import NoInteraction
 
 from imagestore.interfaces import IXml, IXmlFactory, ISession
 
@@ -153,12 +155,26 @@ class XmlContainerBase(XmlBase):
         def priority_key(n):
             return (self.sort_priority.get(n, 1000), n)
 
+        try:
+            interaction = getInteraction()
+        except NoInteraction:
+            # XXX when running in unit tests
+            interaction = DummyInteraction()
+            
         names = sorted(self.context.keys(), key=priority_key)
         for name in names:
             obj = self.context[name]
+            if not interaction.checkPermission('imagestore.Read', obj):
+                continue
             IXml(obj).serialize(el_result, settings,
                                 url=xml_href(url, name))
         return el_result
+
+class DummyInteraction(object):
+    """A dummy interaction for use in unit (non-functional) tests.
+    """
+    def checkPermission(self, permission, obj):
+        return True
 
 # a validator cache
 validators = {}

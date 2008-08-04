@@ -9,6 +9,7 @@ from imagestore.interfaces import IRest
 from imagestore.xml import XmlContainerBase, NS, XmlContainerFactoryBase
 from imagestore.rest import StoreLayer, success_message, error_message, embed_http
 from imagestore.util import is_legal_name
+from imagestore.rest import Read, Write
 
 class ImageContainer(grok.Container):
     grok.implements(IRest)
@@ -34,6 +35,7 @@ class Factory(grok.View):
     binary data.
     """
     grok.layer(StoreLayer)
+    grok.require(Write)
     
     tree = None
     
@@ -60,7 +62,8 @@ class Factory(grok.View):
 
 class Rest(grok.REST):
     grok.layer(StoreLayer)
-    
+
+    @grok.require(Write)
     def POST(self):
         self.response.setHeader('Content-Type',
                                 'application/xml; charset=UTF-8')

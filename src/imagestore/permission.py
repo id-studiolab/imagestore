@@ -12,34 +12,38 @@ class Permission(grok.Container):
         super(Permission, self).__init__()
         self.permission = permission
 
-@grok.subscribe(Permission, grok.IObjectAddedEvent)
-def permission_added(obj, event):
-    if obj.permission not in ('read', 'write'):
-        return
+def add_permission(obj):
+    """Add Zope permission given Permission obj.
+    """
     try:
-        role_manager(obj).assignRoleToPrincipal(
-            perm2role(obj.permission), name2principalid(obj.__name__))
+        mgr = role_manager(obj)
     except TypeError:
         # XXX if we don't have IPrincipalRoleManager set up...
-        pass
+        return
 
+    id = name2principalid(obj.__name__)
+    if obj.permission in ('read', 'write'):
+        mgr.assignRoleToPrincipal(perm2role(obj.permission), id)
+    elif obj.permission == 'none':
+        mgr.removeRoleFromPrincipal(perm2role('read'), id)
+        mgr.removeRoleFromPrincipal(perm2role('write'), id)
+
+def remove_permission(obj):
+    """Remove Zope permission(s) given Permission obj.
+    """
+    try:
+        mgr = role_manager(obj)
+    except TypeError:
+        # XXX if we don't have IPrincipalRoleManager set up...
+        return
+    # unset any relevant roles for principal
+    id = name2principalid(obj.__name__)
+    for role, setting in mgr.getRolesForPrincipal(id):
+        mgr.unsetRoleForPrincipal(role, id)
+    
 @grok.subscribe(Permission, grok.IObjectRemovedEvent)
 def permission_removed(obj, event):
-    if obj.permission not in ('read', 'write'):
-        return
-    try:
-        role_manager(obj).removeRoleFromPrincipal(
-            perm2role(obj.permission), name2principalid(obj.__name__))
-    except TypeError:
-        # XXX if we don't have IPrincipalRoleManager set up...
-        pass
-        
-#@grok.subscribe(Permission, grok.IObjectModifiedEvent):
-#def permission_modified(obj, event):
-#    role_manager(obj).removeRoleFromPrincipal(
-#        perm2internal(obj.permission), obj.__name__)
-#    role_manager(obj).assignRoleToPrincipal(
-#        perm2internal(obj.permission), obj.__name__)
+    remove_permission(obj)
     
 def role_manager(permission):
     """role manager for session (given permission).
@@ -80,4 +84,11 @@ class PermissionFactory(XmlContainerFactoryBase):
         return Permission('none')
 
     def replace(self, element, result):
-        result.permission = element.get('permission', 'none')
+        # remove any previous permissions for this role
+        remove_permission(result)
+        # now get new permission
+        permission = element.get('permission')
+        result.permission = permission
+        # add permission manually
+        add_permission(result)
+

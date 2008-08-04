@@ -5,7 +5,23 @@ CHANGES
 1.0b2 (unreleased)
 ==================
 
-* ...
+* Introduce an accounts and permissions infrastructure - see
+  ``auth.txt`` for more information. In brief, there is an
+  ``accounts`` structure under the store, and also a ``permissions``
+  structure where accounts (include the ``default`` account, relevant
+  for everybody) can be given the following permissions:
+
+    - ``read`` (read-only)
+
+    - ``write`` (read + write)
+
+    - ``none`` (explicitly no permission)
+
+  There is also a ``permissions`` structure for individual
+  sessions. Users won't see or be allowed to access sessions that they
+  do not at least have the ``read`` permission for.
+
+  Permissions and accounts can be manipulated using RESTful apis.
 
 1.0b1 (2008-07-29)
 ==================
