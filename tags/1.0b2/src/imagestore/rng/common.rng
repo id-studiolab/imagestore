@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar xmlns:ids="http://studiolab.io.tudelft.nl/ns/imagestore" xmlns="http://relaxng.org/ns/structure/1.0" datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+  <define name="imagestore">
+    <element name="ids:imagestore">
+      <ref name="sessions"/>
+    </element>
+  </define>
+  <define name="accounts">
+    <element name="ids:accounts">
+      <ref name="href_attr"/>
+      <zeroOrMore>
+        <ref name="account"/>
+      </zeroOrMore>
+    </element>
+  </define>
+  <define name="account">
+    <element name="ids:account">
+      <ref name="attrs"/>
+      <ref name="password"/>
+    </element>
+  </define>
+  <define name="password">
+    <element name="ids:password">
+      <ref name="href_attr"/>
+      <text/>
+    </element>
+  </define>
+  <define name="sessions">
+    <element name="ids:sessions">
+      <ref name="href_attr"/>
+      <zeroOrMore>
+        <ref name="session"/>
+      </zeroOrMore>
+    </element>
+  </define>
+  <define name="session">
+    <element name="ids:session">
+      <ref name="attrs"/>
+      <optional>
+        <ref name="group"/>
+      </optional>
+      <optional>
+        <ref name="groups"/>
+      </optional>
+      <optional>
+        <ref name="images"/>
+      </optional>
+      <optional>
+        <ref name="permissions"/>
+      </optional>
+    </element>
+  </define>
+  <define name="permissions">
+    <element name="ids:permissions">
+      <ref name="href_attr"/>
+      <zeroOrMore>
+        <ref name="permission"/>
+      </zeroOrMore>
+    </element>
+  </define>
+  <define name="permission">
+    <element name="ids:permission">
+      <ref name="attrs"/>
+      <ref name="permission_attr"/>
+    </element>
+  </define>
+  <define name="groups">
+    <element name="ids:groups">
+      <ref name="href_attr"/>
+      <zeroOrMore>
+        <ref name="group"/>
+      </zeroOrMore>
+    </element>
+  </define>
+  <define name="images">
+    <element name="ids:images">
+      <ref name="href_attr"/>
+      <zeroOrMore>
+        <ref name="source-image"/>
+      </zeroOrMore>
+    </element>
+  </define>
+  <define name="source-image">
+    <element name="ids:source-image">
+      <ref name="attrs"/>
+    </element>
+  </define>
+  <define name="group">
+    <element name="ids:group">
+      <ref name="attrs"/>
+      <ref name="source"/>
+      <ref name="metadata"/>
+      <ref name="objects"/>
+    </element>
+  </define>
+  <define name="source">
+    <element name="ids:source">
+      <optional>
+        <attribute name="src"/>
+      </optional>
+      <ref name="href_attr"/>
+      <ref name="name_attr"/>
+    </element>
+  </define>
+  <define name="metadata">
+    <element name="ids:metadata">
+      <ref name="href_attr"/>
+      <zeroOrMore>
+        <ref name="anyElement"/>
+      </zeroOrMore>
+    </element>
+  </define>
+  <define name="anyElement">
+    <element>
+      <anyName/>
+      <zeroOrMore>
+        <choice>
+          <attribute>
+            <anyName/>
+          </attribute>
+          <text/>
+          <ref name="anyElement"/>
+        </choice>
+      </zeroOrMore>
+    </element>
+  </define>
+  <define name="objects">
+    <element name="ids:objects">
+      <ref name="href_attr"/>
+      <zeroOrMore>
+        <choice>
+          <ref name="group"/>
+          <ref name="image"/>
+        </choice>
+      </zeroOrMore>
+    </element>
+  </define>
+  <define name="image">
+    <element name="ids:image">
+      <ref name="attrs"/>
+      <ref name="source"/>
+      <ref name="metadata"/>
+    </element>
+  </define>
+  <define name="attrs">
+    <ref name="href_attr"/>
+    <ref name="name_attr"/>
+  </define>
+  <define name="href_attr">
+    <optional>
+      <attribute name="href">
+        <data type="anyURI"/>
+      </attribute>
+    </optional>
+  </define>
+  <define name="name_attr">
+    <attribute name="name">
+      <data type="string">
+        <param name="pattern">[a-zA-Z0-9_\.\-]*</param>
+      </data>
+    </attribute>
+  </define>
+  <define name="permission_attr">
+    <attribute name="permission">
+      <choice>
+        <value>none</value>
+        <value>read</value>
+        <value>write</value>
+      </choice>
+    </attribute>
+  </define>
+</grammar>

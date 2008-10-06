@@ -1,0 +1,12 @@
+<metal:block use-macro="context/@@dashboard_macros/macros/main">
+<metal:block fill-slot="content">
+<h1>Delete session <span tal:replace="context/__name__">name</span></h1>
+<p class="small">Are you sure you want to delete session <span tal:replace="context/__name__">name</span>?</p>
+<form tal:attributes="action view/url" method="POST">
+<p>
+<input type="submit" name="delete" value="Delete session" />
+<input type="submit" name="cancel" value="Cancel" />
+</p>
+</form>
+</metal:block>
+</metal:block>

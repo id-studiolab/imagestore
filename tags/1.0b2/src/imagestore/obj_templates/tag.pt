@@ -1,0 +1,8 @@
+<html>
+<body>
+<form tal:attributes="action view/url" method="POST">
+Tags: <input type="text" name="tags" tal:attributes="value python:' '.join(context.tags)" /><br/>
+<input type="submit" value="Save" />
+</form>
+</body>
+</html>

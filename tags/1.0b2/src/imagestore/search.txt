@@ -1,0 +1,442 @@
+Searching the imageSTORE
+========================
+
+This document describes the RESTful search interface for the imagestore.
+
+Searching a simple session
+--------------------------
+
+Let's first set up a new application to search in::
+
+  >>> from imagestore.app import ImageStore
+  >>> getRootFolder()['store'] = store = ImageStore()
+
+We can now use the ``url_to`` function to construct the absolute URL
+to the sessions container::
+
+  >>> app_url = 'http://localhost/store'
+  >>> response = http_get(app_url)
+  >>> from lxml import etree
+  >>> el = etree.XML(response.getBody())
+  >>> sessions_url = url_to(app_url, el, 'ids:sessions/@href')
+
+Let's create a session with some content. We are going to search
+through the contents of this session in a bit, so we make sure we set some
+tags::
+ 
+  >>> session_xml = '''
+  ... <session xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="one">
+  ...   <group name="collection">
+  ...     <source name="root.jpg"/>
+  ...     <metadata>
+  ...       <depth>1.0</depth>
+  ...       <rotation>2.0</rotation>
+  ...       <tags/>
+  ...       <x>3.0</x>
+  ...       <y>4.0</y>
+  ...     </metadata>
+  ...     <objects>
+  ...       <group name="alpha">
+  ...         <source name="alpha.jpg"/>
+  ...         <metadata>
+  ...           <tags><tag>a</tag></tags>
+  ...         </metadata>
+  ...         <objects/>
+  ...       </group>
+  ...       <group name="beta">
+  ...         <source name="beta.jpg"/>
+  ...         <metadata>
+  ...           <tags><tag>b</tag></tags>
+  ...         </metadata>
+  ...         <objects/>
+  ...       </group>
+  ...     </objects>
+  ...   </group>
+  ...   <images />
+  ... </session>
+  ... '''
+  >>> response = http_post(sessions_url, session_xml)
+
+Now we can access the new structure::
+
+  >>> response = http_get(sessions_url)
+  >>> el = etree.XML(response.getBody())
+
+Let's create a link to the objects section of the collection group. This is
+the URL we use to search through, adding a few extra parameters::
+
+  >>> collection_objects_url = url_to(sessions_url, el, 
+  ...   'ids:session[@name="one"]/ids:group[@name="collection"]/ids:objects/@href')
+
+We also create also links to the ``objects`` section of group
+``alpha`` and ``beta``, which we will need later::
+
+  >>> alpha_objects_url = url_to(sessions_url, el,
+  ...   './/ids:group[@name="alpha"]/ids:objects/@href')
+  >>> beta_objects_url = url_to(sessions_url, el,
+  ...   './/ids:group[@name="beta"]/ids:objects/@href')
+
+Let's now search for all objects in the root group that have the tag
+``a``, using the ``collection_objects_url`` and adding a ``tag`` parameter
+to the URL::
+
+  >>> url = collection_objects_url + '?' + 'tag=a'
+  >>> response = http_get(url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <group href="http://localhost/store/sessions/one/collection/objects/alpha" name="alpha">
+      <source src="http://localhost/store/sessions/one/images/alpha.jpg" href="http://localhost/store/sessions/one/collection/objects/alpha/source" name="alpha.jpg"/>
+      <metadata href="http://localhost/store/sessions/one/collection/objects/alpha/metadata">
+        <created href="http://localhost/store/sessions/one/collection/objects/alpha/metadata/created">...</created>
+        <custom href="http://localhost/store/sessions/one/collection/objects/alpha/metadata/custom"/>
+        <depth href="http://localhost/store/sessions/one/collection/objects/alpha/metadata/depth">0.0</depth>
+        <modified href="http://localhost/store/sessions/one/collection/objects/alpha/metadata/modified">...</modified>
+        <rotation href="http://localhost/store/sessions/one/collection/objects/alpha/metadata/rotation">0.0</rotation>
+        <tags href="http://localhost/store/sessions/one/collection/objects/alpha/metadata/tags">
+          <tag>a</tag>
+        </tags>
+        <x href="http://localhost/store/sessions/one/collection/objects/alpha/metadata/x">0.0</x>
+        <y href="http://localhost/store/sessions/one/collection/objects/alpha/metadata/y">0.0</y>
+      </metadata>
+      <objects href="http://localhost/store/sessions/one/collection/objects/alpha/objects"/>
+    </group>
+  </objects>
+
+Let's look for all objects with tag ``b`` now::
+
+  >>> url = collection_objects_url + '?' + 'tag=b'
+  >>> response = http_get(url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <group href="http://localhost/store/sessions/one/collection/objects/beta" name="beta">
+      <source src="http://localhost/store/sessions/one/images/beta.jpg" href="http://localhost/store/sessions/one/collection/objects/beta/source" name="beta.jpg"/>
+      <metadata href="http://localhost/store/sessions/one/collection/objects/beta/metadata">
+        <created href="http://localhost/store/sessions/one/collection/objects/beta/metadata/created">...</created>
+        <custom href="http://localhost/store/sessions/one/collection/objects/beta/metadata/custom"/>
+        <depth href="http://localhost/store/sessions/one/collection/objects/beta/metadata/depth">0.0</depth>
+        <modified href="http://localhost/store/sessions/one/collection/objects/beta/metadata/modified">...</modified>
+        <rotation href="http://localhost/store/sessions/one/collection/objects/beta/metadata/rotation">0.0</rotation>
+        <tags href="http://localhost/store/sessions/one/collection/objects/beta/metadata/tags">
+          <tag>b</tag>
+        </tags>
+        <x href="http://localhost/store/sessions/one/collection/objects/beta/metadata/x">0.0</x>
+        <y href="http://localhost/store/sessions/one/collection/objects/beta/metadata/y">0.0</y>
+      </metadata>
+      <objects href="http://localhost/store/sessions/one/collection/objects/beta/objects"/>
+    </group>
+  </objects>
+
+Let's look for ``b`` only in group ``alpha``. We do this by accessing
+the ``alpha_objects_url``. We should then find nothing::
+ 
+  >>> url = alpha_objects_url + '?' + 'tag=b'
+  >>> response = http_get(url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="."/>
+
+Likewise when we look for ``a`` in group ``beta``, using
+``beta_objects_url``::
+ 
+  >>> url = beta_objects_url + '?' + 'tag=a'
+  >>> response = http_get(url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href="."/>
+
+If we look for ``a`` and ``b`` in group ``alpha``, we should only find the
+object tagged with ``a``::
+
+  >>> url = alpha_objects_url + '?' + 'tag=a&tag=b'
+  >>> response = http_get(url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <group href="http://localhost/store/sessions/one/collection/objects/alpha" name="alpha">
+      ...
+      <metadata href="http://localhost/store/sessions/one/collection/objects/alpha/metadata">
+        ...
+        <tags href="http://localhost/store/sessions/one/collection/objects/alpha/metadata/tags">
+          <tag>a</tag>
+        </tags>
+        ...
+      </metadata>
+      <objects href="http://localhost/store/sessions/one/collection/objects/alpha/objects"/>
+    </group>
+  </objects>
+
+Searching nested session
+------------------------
+
+Let's create a session with more nested content. We do this to
+demonstrate searching through nested content, finding everything that
+will match our criteria::
+
+  >>> session_xml = '''
+  ... <session xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="two">
+  ...   <group name="collection">
+  ...     <source name="root.jpg"/>
+  ...     <metadata>
+  ...     </metadata>
+  ...     <objects>
+  ...       <group name="alpha">
+  ...         <source name="alpha.jpg"/>
+  ...         <metadata>
+  ...           <tags><tag>a</tag></tags>
+  ...         </metadata>
+  ...         <objects>
+  ...           <image name="alpha-1">
+  ...             <source name="alpha-1.jpg"/>
+  ...             <metadata>
+  ...               <tags><tag>a1</tag><tag>a</tag></tags>
+  ...             </metadata>
+  ...           </image>
+  ...           <image name="alpha-2">
+  ...             <source name="alpha-2.jpg"/>
+  ...             <metadata>
+  ...               <tags><tag>a2</tag><tag>a</tag></tags>
+  ...             </metadata>
+  ...           </image>
+  ...         </objects>
+  ...       </group>
+  ...       <group name="beta">
+  ...         <source name="beta.jpg"/>
+  ...         <metadata>
+  ...           <tags><tag>b</tag></tags>
+  ...         </metadata>
+  ...         <objects/>
+  ...       </group>
+  ...     </objects>
+  ...   </group>
+  ...   <images />
+  ... </session>
+  ... '''
+  >>> response = http_post(sessions_url, session_xml)
+
+Let's create a link to the objects section of the root group of this
+new session::
+
+  >>> response = http_get(sessions_url)
+  >>> el = etree.XML(response.getBody())
+  >>> collection_objects_url = url_to(sessions_url, el, 
+  ...   'ids:session[@name="two"]/ids:group[@name="collection"]/ids:objects/@href')
+
+Let's retrieve all the objects tagged with ``a``. We should get both
+those matches from the ``root`` group as well as those objects
+matching from the ``alpha`` group::
+
+  >>> url = collection_objects_url + '?' + 'tag=a'
+  >>> response = http_get(url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <group href="http://localhost/store/sessions/two/collection/objects/alpha" name="alpha">
+    ...
+    </group>
+    <image href="http://localhost/store/sessions/two/collection/objects/alpha/objects/alpha-1" name="alpha-1">
+    ...
+    </image>
+    <image href="http://localhost/store/sessions/two/collection/objects/alpha/objects/alpha-2" name="alpha-2">
+    ...
+    </image>
+  </objects>
+
+Now let's retrieve only those objects tagged with ``a`` that are in
+the root group::
+
+  >>> url = collection_objects_url + '?' + 'tag=a&deep=False'
+  >>> response = http_get(url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <group href="http://localhost/store/sessions/two/collection/objects/alpha" name="alpha">
+    ...
+    </group>
+  </objects>
+
+Searching for created or modified datetimes
+-------------------------------------------
+
+We are now going to look for objects with certain created and modified
+datetimes. Let's create another session with nested content::
+
+  >>> session_xml = '''
+  ... <session xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="three">
+  ...   <group name="collection">
+  ...     <source name="root.jpg"/>
+  ...     <metadata>
+  ...     </metadata>
+  ...     <objects>
+  ...       <group name="alpha">
+  ...         <source name="alpha.jpg"/>
+  ...         <metadata>
+  ...         </metadata>
+  ...         <objects>
+  ...           <image name="alpha-1">
+  ...             <source name="alpha-1.jpg"/>
+  ...             <metadata>
+  ...             </metadata>
+  ...           </image>
+  ...           <image name="alpha-2">
+  ...             <source name="alpha-2.jpg"/>
+  ...             <metadata>
+  ...             </metadata>
+  ...           </image>
+  ...         </objects>
+  ...       </group>
+  ...       <group name="beta">
+  ...         <source name="beta.jpg"/>
+  ...         <metadata>
+  ...         </metadata>
+  ...         <objects/>
+  ...       </group>
+  ...     </objects>
+  ...   </group>
+  ...   <images />
+  ... </session>
+  ... '''
+
+When we actually create this session, we're going to record the timeframe
+in which we do it::
+
+  >>> from datetime import datetime
+  >>> start = datetime.now()
+
+Now let's actually create the new session::
+
+  >>> response = http_post(sessions_url, session_xml)
+  
+And record when we are done creating it::
+
+  >>> end = datetime.now()
+
+Since all objects in the session should have approximately the same
+created datetime, let's create a few other objects with explicit
+different times::
+
+  >>> response = http_get(sessions_url)
+  >>> el = etree.XML(response.getBody())
+  >>> collection_objects_url = url_to(sessions_url, el, 
+  ...   'ids:session[@name="three"]/ids:group[@name="collection"]/ids:objects/@href')
+
+  >>> xml = '''
+  ... <image xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" name="g">
+  ...   <source name="gamma.jpg"/>
+  ...   <metadata>
+  ...     <depth>1.0</depth>
+  ...     <rotation>2.0</rotation>
+  ...     <tags/>
+  ...     <x>3.0</x>
+  ...     <y>4.0</y>
+  ...   </metadata>
+  ... </image>
+  ... '''
+  >>> start2 = datetime.now()
+  >>> response = http_post(collection_objects_url, xml)
+  >>> end2 = datetime.now()
+
+Now let's find all objects created before the first end datetime. This
+should include all objects except the one we just added, 'g'::
+
+  >>> url = collection_objects_url + '?' + 'created_before=%s' % end.isoformat()
+  >>> response = http_get(url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <group href=".../three/collection/objects/alpha" name="alpha">
+     ...
+    </group>
+    <image href=".../three/collection/objects/alpha/objects/alpha-1" name="alpha-1">
+      ... 
+    </image>
+    <image href=".../three/collection/objects/alpha/objects/alpha-2" name="alpha-2">
+      ...
+    </image>
+    <group href=".../three/collection/objects/beta" name="beta">
+      ...
+    </group>
+    <group href=".../three/collection" name="collection">
+      ...
+    </group>
+  </objects>
+
+Let's look for the image object we just added. This we added after start2::
+
+  >>> url = collection_objects_url + '?' + 'created_after=%s' % start2.isoformat()
+  >>> response = http_get(url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <image href=".../three/collection/objects/g" name="g">
+      ... 
+    </image>
+  </objects>
+
+Let's look at all objects modified since before end2. We should get
+all objects, including ``g``::
+
+  >>> url = collection_objects_url + '?' + 'modified_before=%s' % end2.isoformat()
+  >>> response = http_get(url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <group href=".../three/collection/objects/alpha" name="alpha">
+     ...
+    </group>
+    <image href=".../three/collection/objects/alpha/objects/alpha-1" name="alpha-1">
+      ... 
+    </image>
+    <image href=".../three/collection/objects/alpha/objects/alpha-2" name="alpha-2">
+      ...
+    </image>
+    <group href=".../three/collection/objects/beta" name="beta">
+      ...
+    </group>
+    <group href=".../three/collection" name="collection">
+      ...
+    </group>
+    <image href=".../three/collection/objects/g" name="g">
+      ...
+    </image>
+  </objects>
+
+We now modify object 'g'::
+
+  >>> x_url = url_to(collection_objects_url, el, 'ids:image[@name="g"]/ids:metadata/ids:x/@href')
+  >>> x_url
+  'http://localhost/store/sessions/three/collection/objects/g/metadata/x'
+  >>> xml = '<x xmlns="http://studiolab.io.tudelft.nl/ns/imagestore">456</x>'
+  >>> response = http_put(x_url, xml)
+
+Our data has indeed changed::
+
+  >>> response = http_get(x_url)
+  >>> print response.getBody()
+  <x xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">456.0</x>
+
+We also expect this object to have a later modified date than end2 now. This
+means it shouldn't show up anymore in our original query::
+
+  >>> url = collection_objects_url + '?' + 'modified_before=%s' % end2.isoformat()
+  >>> response = http_get(url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <group href=".../three/collection/objects/alpha" name="alpha">
+     ...
+    </group>
+    <image href=".../three/collection/objects/alpha/objects/alpha-1" name="alpha-1">
+      ... 
+    </image>
+    <image href=".../three/collection/objects/alpha/objects/alpha-2" name="alpha-2">
+      ...
+    </image>
+    <group href=".../three/collection/objects/beta" name="beta">
+      ...
+    </group>
+    <group href=".../three/collection" name="collection">
+      ...
+    </group>
+  </objects>
+
+But it will show up in a new query for all object modified since after end2::
+
+  >>> url = collection_objects_url + '?' + 'modified_after=%s' % end2.isoformat()
+  >>> response = http_get(url)
+  >>> el = pretty(response)
+  <objects xmlns="http://studiolab.io.tudelft.nl/ns/imagestore" href=".">
+    <image href=".../three/collection/objects/g" name="g">
+      ...
+    </image>
+  </objects>

@@ -1,0 +1,16 @@
+imageSTORE credits
+==================
+
+Developer - Martijn Faassen (faassen@startifact.com)
+
+imageSTORE was created by Startifact for ID StudioLab of the faculty
+of Industrial Design at the Delft University of Technology. In
+particular thanks go to:
+
+* Aadjan van der Helm (main project driver at ID Studio)
+
+* Arjen Klinkenberg (built the first front-end project)
+
+* Siniz H.K. Kim (built an image viewing front-end)
+
+* Daniel Saakes (initial feedback)

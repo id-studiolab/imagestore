@@ -1,0 +1,4 @@
+include "common.rnc"
+
+start = image
+

@@ -1,0 +1,102 @@
+<html>
+<head>
+</head>
+<body>
+<style type="text/css">
+</style>
+
+<script type="text/javascript" src="http://yui.yahooapis.com/2.2.2/build/yahoo/yahoo-min.js"></script> 
+<script type="text/javascript" src="http://yui.yahooapis.com/2.2.2/build/yahoo-dom-event/yahoo-dom-event.js" ></script>
+<script type="text/javascript" src="http://yui.yahooapis.com/2.2.2/build/event/event-min.js"></script> 
+<script type="text/javascript" src="http://yui.yahooapis.com/2.2.2/build/dragdrop/dragdrop-min.js" ></script>
+<script type="text/javascript" src="http://yui.yahooapis.com/2.2.2/build/connection/connection-min.js"></script> 
+<script type="text/javascript" src="http://yui.yahooapis.com/2.2.2/build/element/element-beta-min.js"></script> 
+<script type="text/javascript" src="http://yui.yahooapis.com/2.2.2/build/dom/dom-min.js"></script> 
+
+<div id="objects_url" tal:attributes="url python:view.url(context, 'objects')"></div>
+
+<script type="text/javascript">
+setup = function() {
+    var body = document.documentElement.childNodes[1];
+
+    var addImage = function(element, name, image_url, x, y, put_url) {
+      var node = document.createElement('img');
+      node.setAttribute('id', 'object_' + name);
+      node.setAttribute('src', image_url);
+      element.appendChild(node);
+      YAHOO.util.Dom.setX(node, x);
+      YAHOO.util.Dom.setY(node, y);
+      var dd = new YAHOO.util.DD(node);
+      dd.endDrag = function(e) {
+        var r = YAHOO.util.DragDropMgr.getLocation(this);
+        var body = r.left + ' ' + r.top;
+        var callback = {};
+        var transaction = YAHOO.util.Connect.asyncRequest('PUT', 
+          put_url, callback, body);  
+      };
+    };
+
+    var getMapping = function(text) {
+      var lines = text.split('\n');
+      var result = {};
+      for (var i = 0; i < lines.length; i++) {
+        var parts = lines[i].split(' ');
+        result[parts[0]] = parts[1];
+      }
+      return result;
+    }
+
+    var positionSuccess = function(o) {
+      var coords = o.responseText.split(' ');
+      var x = parseInt(coords[0]);
+      var y = parseInt(coords[1]);
+      var object_name = o.argument.object_name;
+      var image_url = o.argument.image_url;
+      var position_url = o.argument.position_url;
+      addImage(body, object_name, image_url, x, y, position_url);
+    };
+
+    var objectSuccess = function(o) {
+      var links = getMapping(o.responseText);
+      var object_name = o.argument[0];
+      var image_url = links.image;
+      var position_url = links.position;
+      var callback = {
+         success: positionSuccess,
+         argument: {
+           object_name: object_name,
+           image_url: image_url,
+           position_url: position_url
+         }
+      };
+      var transaction = YAHOO.util.Connect.asyncRequest('GET',
+        position_url, callback, null);
+    };
+
+    var objectsSuccess = function(o) {
+      var objects = getMapping(o.responseText);
+      for (object_name in objects) {
+        var callback = {
+          success: objectSuccess,
+          argument: [object_name]
+        };
+        var transaction = YAHOO.util.Connect.asyncRequest('GET', 
+          objects[object_name], callback, null);
+      }
+    };
+
+    var url = document.getElementById('objects_url').getAttribute('url');
+ 
+    var callback = {
+      success: objectsSuccess,
+    };
+
+    var transaction = YAHOO.util.Connect.asyncRequest('GET',
+      url, callback, null);
+
+  };
+YAHOO.util.Event.onDOMReady(setup);
+</script>
+
+</body>
+</html>
