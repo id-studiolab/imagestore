@@ -3,7 +3,7 @@ import sys, os
 
 setup(
     name='imageSTORE',
-    version='1.0b2dev',
+    version='1.0b2',
     description="Image metadata and storage system and web service",
     classifiers=[],
     keywords='',
