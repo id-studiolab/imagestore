@@ -2,6 +2,11 @@
 CHANGES
 =======
 
+1.0b3 (unreleased)
+==================
+
+* Upgrade to Grok 0.14.1, which also fixes a security issue.
+
 1.0b2 (2008-10-06)
 ==================
 
