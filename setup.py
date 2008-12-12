@@ -19,5 +19,6 @@ setup(
         'grok',
         'lxml',
         'z3c.blobfile',
+        'grokui.admin',
         ],
     )
