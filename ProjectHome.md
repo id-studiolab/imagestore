@@ -1,0 +1,1 @@
+The imageSTORE is a system and protocol to store and organize images and their associated metadata. It is intended to be used as a backend for developers and researchers who are working on tools and applications that need to store and organize images. They can use the imageSTORE as a web service from whatever platform and implementation language they choose.
